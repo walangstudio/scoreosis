@@ -1,0 +1,23 @@
+{
+  "id": "ahsteroids",
+  "name": "Ah!Steroids",
+  "source": "Y:/projs/walangstudio/ahsteroids",
+  "entry": "game.ranked",
+  "boards": {
+    "classic": ["45629a5a0139f70a"]
+  },
+  "builds": [
+    {
+      "id": "ahsteroids-dev-web",
+      "ruleset": "45629a5a0139f70a",
+      "runtime": "web",
+      "channel": "direct"
+    },
+    {
+      "id": "ahsteroids-dev-windows",
+      "ruleset": "45629a5a0139f70a",
+      "runtime": "windows",
+      "channel": "direct"
+    }
+  ]
+}
