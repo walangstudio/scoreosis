@@ -55,3 +55,6 @@ Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> pl
 - Public leaderboard responses are cached 30 s; tests that change rankings must query a filter combination not fetched before.
 - Python on Windows prints CRLF; strip `\r` before comparing `trace.py` output with `trace.mjs`.
 - Edit regex-bearing `tools/*.mjs` with the Edit tool; a Bash heredoc dropped backslashes from a regex in `pack-game.mjs`.
+- Spend capacity (limiter, admission, D1) only after the credential check in the player's object; doing it in the Worker let forged tokens drain the daily quota.
+- Resume shifts the timing baseline by the paused time only; resetting it to "now" let pause cycles forgive slow motion and bank lead.
+- Keep every Lua VM call inside the verifier's try block; a corrupt checkpoint thrown from `load()` turned every request into a 500.

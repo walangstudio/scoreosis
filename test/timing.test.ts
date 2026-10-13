@@ -72,6 +72,51 @@ describe('timing', () => {
     expect((await player.send(player.play())).status).toBe(200);
   });
 
+  it('does not let pause and resume cycles forgive slow motion', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    let rejected = false;
+    for (let s = 0; s < 40 && !rejected; s++) {
+      clock.advance(1000);
+      const sent = await player.send(player.play(10));
+      if (sent.status !== 200) {
+        rejected = true;
+        break;
+      }
+      const paused = await pause(player);
+      const resumed = await resume(player);
+      rejected = paused.status !== 200 || resumed.status !== 200;
+    }
+    expect(rejected).toBe(true);
+  });
+
+  it('does not let pause and resume cycles bank extra lead', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    let rejected = false;
+    for (let s = 0; s < 40 && !rejected; s++) {
+      clock.advance(1000);
+      rejected = (await player.send(player.play(65))).status !== 200;
+      if (!rejected)
+        rejected = (await pause(player)).status !== 200 || (await resume(player)).status !== 200;
+    }
+    expect(rejected).toBe(true);
+  });
+
+  it('returns the expected tick on resume so a client can catch up', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(1000);
+    await player.send(player.play(40));
+    await pause(player);
+    clock.advance(60_000);
+    const resumed = await resume(player);
+    expect(resumed.body.expected_tick).toBe(60);
+  });
+
   it('requires all input to be flushed before pausing', async () => {
     const clock = useClock();
     const player = await Player.create();
@@ -102,13 +147,13 @@ describe('timing', () => {
     await player.start();
     for (let i = 0; i < 4; i++) {
       clock.advance(1000);
-      expect((await player.send(player.play(30))).status).toBe(200);
+      expect((await player.send(player.play(60))).status).toBe(200);
       expect((await pause(player)).status).toBe(200);
       clock.advance(14 * 60_000);
       expect((await resume(player)).status).toBe(200);
     }
     clock.advance(1000);
-    await player.send(player.play(30));
+    await player.send(player.play(60));
     await pause(player);
     clock.advance(5 * 60_000);
     const res = await resume(player);

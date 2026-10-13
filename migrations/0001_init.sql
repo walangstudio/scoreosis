@@ -42,6 +42,14 @@ CREATE TABLE bests (
   PRIMARY KEY (game_id, board, player_id, country, runtime, channel)
 );
 CREATE INDEX bests_rank ON bests (game_id, board, score DESC);
+CREATE INDEX bests_run ON bests (run_id);
+
+-- Runs suppressed by moderation, kept even before their result is published.
+CREATE TABLE suppressed_runs (
+  run_id TEXT PRIMARY KEY,
+  game_id TEXT NOT NULL,
+  suppressed_at INTEGER NOT NULL
+);
 
 CREATE TABLE disabled_rulesets (
   game_id TEXT NOT NULL,

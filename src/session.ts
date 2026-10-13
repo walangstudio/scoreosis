@@ -17,7 +17,9 @@ export const CHUNK_MAX_TICKS = 120;
 export const WINDOW_TICKS = 90;
 /** Client clocks may run this far ahead of the server's expectation. */
 const FUTURE_SLACK_TICKS = 6;
-const DRIFT = 0.005;
+/** Allowed client clock gain, capped so a long run cannot bank a large lead. */
+const DRIFT = 0.001;
+const DRIFT_MAX_TICKS = 60;
 export const PAUSE_MAX_MS = 15 * 60_000;
 export const PAUSE_TOTAL_MS = 60 * 60_000;
 export const RUN_EXPIRY_MS = 24 * 3_600_000;
@@ -25,7 +27,8 @@ const CHECKPOINT_EVERY_TICKS = 600;
 const TRACE_RETENTION_MS = 7 * 24 * 3_600_000;
 const MAX_BACKOFF_MS = 3_600_000;
 const PUBLISH_BACKOFF_MS = [5_000, 30_000, 120_000, 600_000];
-const VM_LIMITS = { memory: 48 << 20, instructions: 400_000_000 };
+/** The hard cap stops one runaway tick; normal work is bounded by VERIFY_INSTRUCTIONS. */
+const VM_LIMITS = { memory: 48 << 20, instructions: 50_000_000 };
 
 type RunStatus = 'active' | 'paused' | 'verifying' | 'finished' | 'rejected' | 'expired';
 
@@ -125,17 +128,26 @@ type Loaded = { runId: string; vm: LuaVm; tick: number; status: string; checkpoi
 export class PlayerSession extends DurableObject<Env> {
   private readonly sql: SqlStorage;
   private loaded: Loaded | undefined;
+  private verifyQueue: Promise<void> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(SCHEMA);
   }
 
   // --- identity -----------------------------------------------------------
 
+  /** Objects for unknown players never write storage; the schema appears on registration. */
+  private registered(): boolean {
+    return (
+      this.sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").toArray()
+        .length > 0
+    );
+  }
+
   async register(game: string, player: string, secretHash: string): Promise<boolean> {
-    if (this.meta('secret_hash')) return false;
+    if (this.registered()) return false;
+    this.sql.exec(SCHEMA);
     this.sql.exec(
       "INSERT INTO meta (key, value) VALUES ('game', ?), ('player', ?), ('secret_hash', ?)",
       game,
@@ -158,16 +170,21 @@ export class PlayerSession extends DurableObject<Env> {
   ): Promise<{ ok: true; run: StartResult } | Failure> {
     return this.guard(secretHash, async () => {
       const build = this.build(buildId);
+      const { player } = this.identity();
+      this.assertNoActiveRun(Date.now());
+      const { success } = await this.env.API_LIMITER.limit({ key: `runs:${build.game}:${player}` });
+      if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
+      const disabled = await this.env.DB.prepare(
+        'SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?',
+      )
+        .bind(build.game, build.ruleset.ruleset)
+        .first();
+      if (disabled)
+        throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
+      await admit(this.env);
+      // The awaits above let other requests in; check again before creating the run.
       const now = Date.now();
-      const active = this.sql
-        .exec<RunRow>("SELECT * FROM runs WHERE status IN ('active', 'paused', 'verifying')")
-        .toArray();
-      for (const run of active) this.expireIfStale(run, now);
-      if (
-        this.sql.exec("SELECT 1 FROM runs WHERE status IN ('active', 'paused')").toArray().length
-      ) {
-        throw new ApiError('run_active', 'finish or abandon the active ranked run first');
-      }
+      this.assertNoActiveRun(now);
       const runId = crypto.randomUUID();
       const [random = 1] = crypto.getRandomValues(new Uint32Array(1));
       const seed = (random % 2147483646) + 1;
@@ -267,7 +284,7 @@ export class PlayerSession extends DurableObject<Env> {
         body,
         now,
       );
-      await this.verify(run, now);
+      await this.verify(run.id, now);
       return { ack: this.ack(this.run(runId), chunk.seq) };
     });
   }
@@ -300,23 +317,30 @@ export class PlayerSession extends DurableObject<Env> {
   async resume(
     secretHash: string,
     runId: string,
-  ): Promise<{ ok: true; ack: Ack; server_time: number } | Failure> {
+  ): Promise<{ ok: true; ack: Ack; server_time: number; expected_tick: number } | Failure> {
     return this.guard(secretHash, async () => {
       const now = Date.now();
       const run = this.expireIfStale(this.run(runId), now);
       if (run.status !== 'paused' || run.paused_at === null) {
         throw new ApiError('run_not_active', `run is ${run.status}`, { reason: run.reason });
       }
-      const { ticks, nextSeq } = this.received(runId);
+      const { nextSeq } = this.received(runId);
+      // Shift the baseline by the paused time only. Lag or lead from before the
+      // pause carries over, so pause cycles cannot launder slow motion or speed.
+      const paused = now - run.paused_at;
+      const baseline = run.baseline_ms + paused;
       this.sql.exec(
-        "UPDATE runs SET status = 'active', paused_at = NULL, paused_total_ms = ?, baseline_ms = ?, baseline_tick = ? WHERE id = ?",
-        run.paused_total_ms + (now - run.paused_at),
-        now,
-        ticks,
+        "UPDATE runs SET status = 'active', paused_at = NULL, paused_total_ms = ?, baseline_ms = ? WHERE id = ?",
+        run.paused_total_ms + paused,
+        baseline,
         runId,
       );
       await this.scheduleAlarm();
-      return { ack: this.ack(this.run(runId), nextSeq - 1), server_time: now };
+      return {
+        ack: this.ack(this.run(runId), nextSeq - 1),
+        server_time: now,
+        expected_tick: run.baseline_tick + Math.floor(((now - baseline) * TICK_RATE) / 1000),
+      };
     });
   }
 
@@ -343,7 +367,7 @@ export class PlayerSession extends DurableObject<Env> {
         }
       }
       if (run.status === 'verifying') {
-        await this.verify(run, now);
+        await this.verify(run.id, now);
         run = this.run(runId);
       }
       return { outcome: await this.outcome(run) };
@@ -367,18 +391,30 @@ export class PlayerSession extends DurableObject<Env> {
 
   // --- verification ---------------------------------------------------------
 
-  /** Advances the verifier through received input within this request's budget. */
-  private async verify(run: RunRow, now: number): Promise<void> {
-    const loaded = await this.load(run);
-    let budget = Number(this.env.VERIFY_INSTRUCTIONS);
-    const rows = this.sql
-      .exec<InputRow>(
-        'SELECT * FROM inputs WHERE run_id = ? AND from_tick + ticks > ? ORDER BY seq',
-        run.id,
-        loaded.tick,
-      )
-      .toArray();
+  /**
+   * Advances the verifier through received input within this request's budget.
+   * Calls are serialized: the VM is single-threaded and loading awaits.
+   */
+  private verify(runId: string, now: number): Promise<void> {
+    const next = this.verifyQueue.then(() => this.verifyNow(runId, now));
+    this.verifyQueue = next.catch(() => {});
+    return next;
+  }
+
+  private async verifyNow(runId: string, now: number): Promise<void> {
+    const run = this.run(runId);
+    if (run.status !== 'active' && run.status !== 'paused' && run.status !== 'verifying') return;
+    let budget = verifyBudget(this.env);
+    let loaded: Loaded;
     try {
+      loaded = await this.load(run);
+      const rows = this.sql
+        .exec<InputRow>(
+          'SELECT * FROM inputs WHERE run_id = ? AND from_tick + ticks > ? ORDER BY seq',
+          run.id,
+          loaded.tick,
+        )
+        .toArray();
       for (const row of rows) {
         if (budget <= 0 || loaded.status === 'finished') break;
         const pending = skipTicks(parseStored(row.runs), loaded.tick - row.from_tick);
@@ -388,10 +424,6 @@ export class PlayerSession extends DurableObject<Env> {
         budget -= loaded.vm.lastInstructions();
         loaded.tick = Number(tick);
         loaded.status = finished === '1' ? 'finished' : 'playing';
-        if (loaded.status === 'finished' && loaded.tick < row.from_tick + row.ticks) {
-          this.reject(run, 'input_after_end', now);
-          return;
-        }
         if (
           loaded.tick === row.from_tick + row.ticks &&
           row.checksum !== null &&
@@ -401,21 +433,17 @@ export class PlayerSession extends DurableObject<Env> {
           log('desync', { run: run.id, ruleset: run.ruleset, tick: loaded.tick });
           return;
         }
-        if (loaded.tick - loaded.checkpointTick >= CHECKPOINT_EVERY_TICKS) {
-          this.sql.exec(
-            'INSERT INTO checkpoints (run_id, tick, data) VALUES (?, ?, ?) ON CONFLICT (run_id) DO UPDATE SET tick = excluded.tick, data = excluded.data',
-            run.id,
-            loaded.tick,
-            loaded.vm.call('sv_save'),
-          );
-          loaded.checkpointTick = loaded.tick;
-        }
+        if (loaded.tick - loaded.checkpointTick >= CHECKPOINT_EVERY_TICKS) this.checkpoint(loaded);
       }
     } catch (error) {
+      if (!isVerifierFault(error)) throw error;
       this.loaded = undefined;
-      if (!(error instanceof VmError)) throw error;
       this.reject(run, 'verifier_error', now);
-      log('verifier_error', { run: run.id, ruleset: run.ruleset, message: error.message });
+      log('verifier_error', { run: run.id, ruleset: run.ruleset, message: String(error) });
+      return;
+    }
+    if (loaded.status === 'finished' && this.received(run.id).ticks > loaded.tick) {
+      this.reject(run, 'input_after_end', now);
       return;
     }
     if (loaded.status === 'finished' && run.status === 'active') {
@@ -432,13 +460,26 @@ export class PlayerSession extends DurableObject<Env> {
       loaded.tick >= current.final_tick
     ) {
       await this.finalize(current, loaded, now);
-    } else if (current.status === 'verifying') {
+    } else {
       await this.scheduleAlarm(now);
     }
   }
 
+  private checkpoint(loaded: Loaded): void {
+    this.sql.exec(
+      'INSERT INTO checkpoints (run_id, tick, data) VALUES (?, ?, ?) ON CONFLICT (run_id) DO UPDATE SET tick = excluded.tick, data = excluded.data',
+      loaded.runId,
+      loaded.tick,
+      loaded.vm.call('sv_save'),
+    );
+    loaded.checkpointTick = loaded.tick;
+  }
+
   private async load(run: RunRow): Promise<Loaded> {
     if (this.loaded?.runId === run.id) return this.loaded;
+    // Keep the outgoing run's progress so alternating runs cannot livelock.
+    if (this.loaded && this.loaded.tick > this.loaded.checkpointTick) this.checkpoint(this.loaded);
+    this.loaded = undefined;
     const build = this.build(run.build);
     const vm = await LuaVm.create({
       wasm: luaWasm,
@@ -572,8 +613,15 @@ export class PlayerSession extends DurableObject<Env> {
     for (const run of this.sql
       .exec<RunRow>("SELECT * FROM runs WHERE status IN ('active', 'paused', 'verifying')")
       .toArray()) {
-      const current = this.expireIfStale(run, now);
-      if (current.status === 'verifying') await this.verify(current, now);
+      try {
+        const current = this.expireIfStale(run, now);
+        if (current.status === 'verifying' || this.hasBacklog(current)) {
+          await this.verify(current.id, now);
+        }
+      } catch (error) {
+        // One broken run must not stop cleanup and publication for the others.
+        log('alarm_error', { run: run.id, error: String(error) });
+      }
     }
     this.sql.exec(
       `DELETE FROM inputs WHERE run_id IN (SELECT id FROM runs WHERE status IN ('finished', 'rejected', 'expired')
@@ -592,7 +640,7 @@ export class PlayerSession extends DurableObject<Env> {
     for (const run of this.sql
       .exec<RunRow>("SELECT * FROM runs WHERE status IN ('active', 'paused', 'verifying')")
       .toArray()) {
-      if (run.status === 'verifying') deadlines.push(now + 1000);
+      if (run.status === 'verifying' || this.hasBacklog(run)) deadlines.push(now + 1000);
       else if (run.status === 'paused' && run.paused_at !== null)
         deadlines.push(run.paused_at + PAUSE_MAX_MS);
       else deadlines.push(this.lossDeadline(run));
@@ -616,6 +664,15 @@ export class PlayerSession extends DurableObject<Env> {
     const next = Math.max(now + 1000, Math.min(...deadlines));
     const current = await this.ctx.storage.getAlarm();
     if (current === null || Math.abs(current - next) > 500) await this.ctx.storage.setAlarm(next);
+  }
+
+  /** True when received input is waiting for the loaded verifier of an active run. */
+  private hasBacklog(run: RunRow): boolean {
+    return (
+      run.status === 'active' &&
+      this.loaded?.runId === run.id &&
+      this.loaded.tick < this.received(run.id).ticks
+    );
   }
 
   /** Time after which missing input means the connection was lost. */
@@ -645,6 +702,17 @@ export class PlayerSession extends DurableObject<Env> {
     return this.run(run.id);
   }
 
+  private assertNoActiveRun(now: number): void {
+    for (const run of this.sql
+      .exec<RunRow>("SELECT * FROM runs WHERE status IN ('active', 'paused', 'verifying')")
+      .toArray()) {
+      this.expireIfStale(run, now);
+    }
+    if (this.sql.exec("SELECT 1 FROM runs WHERE status IN ('active', 'paused')").toArray().length) {
+      throw new ApiError('run_active', 'finish or abandon the active ranked run first');
+    }
+  }
+
   private reject(run: RunRow, reason: string, now: number): void {
     this.sql.exec(
       "UPDATE runs SET status = 'rejected', reason = ?, finalized_at = ? WHERE id = ?",
@@ -660,7 +728,8 @@ export class PlayerSession extends DurableObject<Env> {
   private checkTiming(run: RunRow, endTick: number, now: number): string | undefined {
     const elapsed = Math.max(0, now - run.baseline_ms);
     const expected = run.baseline_tick + (elapsed * TICK_RATE) / 1000;
-    const ahead = FUTURE_SLACK_TICKS + (elapsed * TICK_RATE * DRIFT) / 1000;
+    const ahead =
+      FUTURE_SLACK_TICKS + Math.min(DRIFT_MAX_TICKS, (elapsed * TICK_RATE * DRIFT) / 1000);
     if (endTick > expected + ahead) return 'input is ahead of real time';
     if (endTick < expected - WINDOW_TICKS) return 'input arrived too late';
     return undefined;
@@ -672,7 +741,7 @@ export class PlayerSession extends DurableObject<Env> {
     secretHash: string,
     fn: () => Promise<T>,
   ): Promise<({ ok: true } & T) | Failure> {
-    const stored = this.meta('secret_hash');
+    const stored = this.registered() ? this.meta('secret_hash') : undefined;
     if (!stored || !timingSafeEqual(stored, secretHash))
       return fail('unauthorized', 'invalid credential');
     try {
@@ -770,4 +839,37 @@ function timingSafeEqual(a: string, b: string): boolean {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+/** Stops new ranked runs before the daily free-plan budget is exhausted. */
+async function admit(env: Env): Promise<void> {
+  const day = new Date().toISOString().slice(0, 10);
+  const row = await env.DB.prepare(
+    `INSERT INTO usage (day, runs_started) VALUES (?1, 1)
+     ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
+     RETURNING runs_started`,
+  )
+    .bind(day, Number(env.MAX_RUNS_PER_DAY))
+    .first();
+  if (!row) {
+    log('capacity_reached', { day });
+    throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
+  }
+}
+
+function verifyBudget(env: Env): number {
+  const budget = Number(env.VERIFY_INSTRUCTIONS);
+  if (!Number.isInteger(budget) || budget < 10_000) {
+    throw new Error('VERIFY_INSTRUCTIONS must be an integer >= 10000');
+  }
+  return budget;
+}
+
+/** Errors raised by the Wasm verifier itself, as opposed to storage or bugs here. */
+function isVerifierFault(error: unknown): boolean {
+  return (
+    error instanceof VmError ||
+    error instanceof WebAssembly.RuntimeError ||
+    error instanceof RangeError
+  );
 }

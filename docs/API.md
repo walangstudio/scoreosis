@@ -38,13 +38,14 @@ Network failures and 5xx on `inputs` are retried with the identical body: the se
 | Other JSON bodies | 2 KiB |
 | Ticks per input chunk | 120 (60 expected) |
 | Tick rate | 60 Hz |
-| Timing window | 90 ticks (1.5 s) behind real time; 6 ticks + 0.5% ahead |
+| Timing window | 90 ticks (1.5 s) behind real time; 6 ticks + 0.1% (at most 60 ticks) ahead |
 | Single pause | 15 min |
 | Total paused time | 60 min |
 | Session expiry | 24 h after start |
 | Leaderboard | top 100, pages of 25 |
 | Guest creation | 5 per minute per address |
 | Run starts | 30 per minute per player |
+| Any route but health | 300 per minute per address (IPv6 per /64) |
 
 ## Routes
 
@@ -102,7 +103,7 @@ Body `{ "tick" }`, the last tick sent. Flush all input first. The pause starts a
 
 ### `POST …/runs/:run/resume`
 
-`200` with the acknowledgment and `server_time`, the new timing baseline. Resume ticking when the response arrives.
+`200` with the acknowledgment, `server_time` and `expected_tick`. The pause removes only the paused time from the timing baseline; lag or lead from before it carries over. Resume ticking when the response arrives and catch up to `expected_tick`, which covers time lost to the pause round trips.
 
 ### `POST …/runs/:run/finish`
 
@@ -146,4 +147,4 @@ Verified achievements with progress: `{ "achievements": [{ "id", "name", "descri
 - `POST /v1/admin/games/:game/runs/:run/suppress`
 - `POST /v1/admin/games/:game/rulesets/:ruleset/disable` (also suppresses that ruleset's results)
 
-Moderation reaches cached leaderboard pages within 30 s.
+Suppressing a run or disabling a ruleset also applies to results published later, including runs still in progress. Moderation reaches cached leaderboard pages within 30 s.

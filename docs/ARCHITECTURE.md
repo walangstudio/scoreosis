@@ -45,7 +45,7 @@ About 116k Lua instructions per millisecond. Checkpoints are 6-35 KiB, written e
 
 ## Free plan budget
 
-One second of ranked play costs one Worker request, one Durable Object request and about 1.1 SQLite rows written. With the documented free allowances (100k Worker requests, 100k Durable Object requests, 100k rows written per day, account-wide), Scoreosis alone supports roughly 25 player-hours of ranked play per day. `MAX_RUNS_PER_DAY` stops new runs before that; running sessions continue. Raising capacity needs fewer requests per second of play (a longer chunk interval with a wider window, or WebSocket transport, which Cloudflare bills at 20 messages per request) or a paid plan.
+One second of ranked play costs one Worker request, one Durable Object request and about 1.1 SQLite rows written. With the documented free allowances (100k Worker requests, 100k Durable Object requests, 100k rows written per day, account-wide), Scoreosis alone supports roughly 25 player-hours of ranked play per day. `MAX_RUNS_PER_DAY` stops new runs before that; running sessions continue. It counts runs, not seconds, so set it from the measured average run length: 25 player-hours at a 2-minute average is about 750 runs. Raising capacity needs fewer requests per second of play (a longer chunk interval with a wider window, or WebSocket transport, which Cloudflare bills at 20 messages per request) or a paid plan.
 
 ## Trust limits
 

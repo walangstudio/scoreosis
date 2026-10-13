@@ -7,12 +7,17 @@ import wasm from '../src/vm/lua51.wasm';
 
 export const BASE = 'https://scoreosis.test';
 export const BUILD = 'ahsteroids-dev-web';
+let requestCount = 0;
 
 export async function api(
   path: string,
   init: { method?: string; token?: string; body?: unknown; headers?: Record<string, string> } = {},
 ) {
-  const headers: Record<string, string> = { ...init.headers };
+  requestCount++;
+  const headers: Record<string, string> = {
+    'cf-connecting-ip': `10.${(requestCount >> 16) & 255}.${(requestCount >> 8) & 255}.${requestCount & 255}`,
+    ...init.headers,
+  };
   if (init.token) headers.authorization = `Bearer ${init.token}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   const res = await SELF.fetch(`${BASE}${path}`, {

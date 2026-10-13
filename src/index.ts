@@ -51,12 +51,20 @@ export default {
   },
 
   async scheduled(_controller, env): Promise<void> {
-    const removed = await pruneResults(env.DB, Date.now() - RESULT_RETENTION_MS);
+    let removed = 0;
+    for (let batch = 0; batch < 20; batch++) {
+      const n = await pruneResults(env.DB, Date.now() - RESULT_RETENTION_MS);
+      removed += n;
+      if (n < 500) break;
+    }
     log('results_pruned', { removed });
   },
 } satisfies ExportedHandler<Env>;
 
 async function dispatch(ctx: RequestContext): Promise<Response> {
+  if (ctx.url.pathname !== '/v1/health') {
+    await limit(ctx.env.IP_LIMITER, `ip:${addressKey(ctx.request)}`);
+  }
   for (const r of routes) {
     const match = r.pattern.exec(ctx.url.pathname);
     if (match && r.method === ctx.request.method) return r.handler(ctx, match.slice(1));
@@ -85,7 +93,7 @@ route('GET', /^\/v1\/games\/([a-z0-9_]+)$/, async (_ctx, [gameId = '']) => {
 });
 
 route('POST', /^\/v1\/guests$/, async ({ request, env }) => {
-  await limit(env.GUEST_LIMITER, `ip:${request.headers.get('cf-connecting-ip') ?? 'unknown'}`);
+  await limit(env.GUEST_LIMITER, `guest:${addressKey(request)}`);
   const body = await readJson(request, JSON_LIMIT);
   const game = getGame(str(body, 'game_id', /^[a-z0-9_]{1,32}$/));
   const buildId = str(body, 'build_id', BUILD_ID);
@@ -188,18 +196,12 @@ route(
 route('POST', /^\/v1\/games\/([a-z0-9_]+)\/runs$/, async ({ request, env }, [gameId = '']) => {
   const game = getGame(gameId);
   const auth = await authenticate(request, env, game.id);
-  await limit(env.API_LIMITER, `runs:${game.id}:${auth.player}`);
   const body = await readJson(request, JSON_LIMIT);
   const build = game.builds.get(str(body, 'build_id', BUILD_ID));
   if (!build)
     throw new ApiError('unsupported_build', 'this build is not registered for ranked play');
-  const disabled = await env.DB.prepare(
-    'SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?',
-  )
-    .bind(game.id, build.ruleset.ruleset)
-    .first();
-  if (disabled) throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
-  await admit(env);
+  // Throttling, the disabled-ruleset check and admission run in the player's
+  // object after the credential check, so forged tokens cannot spend capacity.
   const country = normalizeCountry((request.cf as { country?: string } | undefined)?.country);
   return reply(await auth.session.startRun(auth.secretHash, build.id, country), (r) => r.run, 201);
 });
@@ -250,6 +252,7 @@ route(
     return reply(await auth.session.resume(auth.secretHash, runIdOf(runId)), (r) => ({
       ...r.ack,
       server_time: r.server_time,
+      expected_tick: r.expected_tick,
     }));
   },
 );
@@ -286,6 +289,9 @@ route(
   async ({ request, env }, [gameId = '', playerId = '']) => {
     await requireAdmin(request, env);
     const body = await readJson(request, JSON_LIMIT);
+    if (body.hidden !== undefined && typeof body.hidden !== 'boolean') {
+      throw new ApiError('bad_request', 'hidden must be a boolean');
+    }
     const hidden = body.hidden !== false;
     await env.DB.prepare('UPDATE players SET hidden = ? WHERE game_id = ? AND player_id = ?')
       .bind(hidden ? 1 : 0, getGame(gameId).id, playerId)
@@ -301,9 +307,16 @@ route(
   async ({ request, env }, [gameId = '', runId = '']) => {
     await requireAdmin(request, env);
     const game = getGame(gameId);
-    await env.DB.prepare('UPDATE results SET suppressed = 1 WHERE game_id = ? AND run_id = ?')
-      .bind(game.id, runIdOf(runId))
-      .run();
+    const id = runIdOf(runId);
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO suppressed_runs (run_id, game_id, suppressed_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
+      ).bind(id, game.id, Date.now()),
+      env.DB.prepare('UPDATE results SET suppressed = 1 WHERE game_id = ? AND run_id = ?').bind(
+        game.id,
+        id,
+      ),
+    ]);
     await rebuildBests(env.DB, game.id);
     log('admin_suppress_run', { game: game.id });
     return json({ ok: true });
@@ -360,26 +373,17 @@ async function requireAdmin(request: Request, env: Env): Promise<void> {
   }
 }
 
+/** Throttle key for the caller's address; an IPv6 client is keyed by its /64. */
+function addressKey(request: Request): string {
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  if (!ip.includes(':')) return ip;
+  const groups = ip.split('::')[0]?.split(':') ?? [];
+  return `${groups.slice(0, 4).join(':')}::/64`;
+}
+
 async function limit(limiter: RateLimit, key: string): Promise<void> {
   const { success } = await limiter.limit({ key });
   if (!success) throw new ApiError('rate_limited', 'too many requests; retry later');
-}
-
-/** Stops new ranked runs before the daily free-plan budget is exhausted. */
-async function admit(env: Env): Promise<void> {
-  const day = new Date().toISOString().slice(0, 10);
-  const max = Number(env.MAX_RUNS_PER_DAY);
-  const row = await env.DB.prepare(
-    `INSERT INTO usage (day, runs_started) VALUES (?1, 1)
-     ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
-     RETURNING runs_started`,
-  )
-    .bind(day, max)
-    .first();
-  if (!row) {
-    log('capacity_reached', { day });
-    throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
-  }
 }
 
 function reply<T extends object>(

@@ -195,7 +195,10 @@ function M:resume(callback)
 	end
 	self.status = "resuming"
 	self.client:call("POST", run_path(self, "resume"), {}, function(ok, res)
-		self.base_time, self.base_tick = self.now(), self.tick
+		-- The server's expected tick includes time lost to the pause round trips;
+		-- due() catches up to it a few ticks per frame.
+		self.base_time = self.now()
+		self.base_tick = ok and res.expected_tick or self.tick
 		if ok then
 			self.status = "ranked"
 		else

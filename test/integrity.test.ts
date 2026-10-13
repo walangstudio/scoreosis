@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Player, api, guest, useClock } from './client.js';
 
@@ -32,6 +33,25 @@ describe('isolation', () => {
       });
       expect(res.status).toBe(401);
     }
+  });
+
+  it('does not spend daily capacity or create storage for forged tokens', async () => {
+    const used = async () =>
+      (
+        await env.DB.prepare('SELECT sum(runs_started) AS n FROM usage').first<{
+          n: number | null;
+        }>()
+      )?.n ?? 0;
+    const before = await used();
+    for (let i = 0; i < 5; i++) {
+      const id = crypto.randomUUID().replace(/-/g, '');
+      const res = await api('/v1/games/ahsteroids/runs', {
+        token: `${id}.${'B'.repeat(43)}`,
+        body: { build_id: 'ahsteroids-dev-web' },
+      });
+      expect(res.status).toBe(401);
+    }
+    expect(await used()).toBe(before);
   });
 
   it('scopes credentials to one game', async () => {

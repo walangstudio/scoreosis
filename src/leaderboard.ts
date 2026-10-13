@@ -24,8 +24,11 @@ export async function publishResult(db: D1Database, r: PublishedResult): Promise
   await db.batch([
     db
       .prepare(
-        `INSERT INTO results (run_id, game_id, board, ruleset, player_id, score, runtime, channel, country, accepted_at, facts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (run_id) DO NOTHING`,
+        `INSERT INTO results (run_id, game_id, board, ruleset, player_id, score, runtime, channel, country, accepted_at, facts, suppressed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+           EXISTS (SELECT 1 FROM suppressed_runs WHERE run_id = ?1)
+           OR EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?2 AND ruleset = ?4))
+         ON CONFLICT (run_id) DO NOTHING`,
       )
       .bind(
         r.run_id,
@@ -73,15 +76,17 @@ export type BoardFilter = {
 
 export type BoardEntry = { rank: number; player_id: string; name: string; score: number };
 
-// Each player's best within the filter; unknown country ('') never matches a country filter.
+// Each player's best within the filter, earliest accepted on ties; unknown
+// country ('') never matches a country filter.
 const BEST = `
-  WITH best AS (
-    SELECT b.player_id, max(b.score) AS score, b.accepted_at, b.run_id
+  WITH candidates AS (
+    SELECT b.player_id, b.score, b.accepted_at, b.run_id,
+      row_number() OVER (PARTITION BY b.player_id ORDER BY b.score DESC, b.accepted_at, b.run_id) AS n
     FROM bests b JOIN players p ON p.game_id = b.game_id AND p.player_id = b.player_id
     WHERE b.game_id = ?1 AND b.board = ?2 AND p.hidden = 0
       AND (?3 IS NULL OR b.country = ?3) AND (?4 IS NULL OR b.runtime = ?4) AND (?5 IS NULL OR b.channel = ?5)
-    GROUP BY b.player_id
-  )`;
+  ),
+  best AS (SELECT player_id, score, accepted_at, run_id FROM candidates WHERE n = 1)`;
 
 const filterArgs = (f: BoardFilter) => [f.game, f.board, f.country, f.runtime, f.channel];
 

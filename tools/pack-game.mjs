@@ -24,16 +24,65 @@ const FORBIDDEN = [
   [/\b(os|io|debug|package)\./, 'host library access'],
   [/\b(loadstring|dofile|loadfile|setfenv|getfenv|collectgarbage)\b/, 'unsafe builtin'],
   [/\^/, 'the ^ operator calls pow(); multiply instead'],
+  [/\b(pcall|xpcall)\b|\bcoroutine\./, 'the verifier cannot catch errors or run coroutines'],
+  [
+    /\btable\.sort\b/,
+    'table.sort orders ties differently across Lua builds; sort with a total order by hand',
+  ],
 ];
 
-function stripComments(src) {
-  return src.replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, '').replace(/--[^\n]*/g, '');
-}
+const LONG_OPEN = /\[(=*)\[/y;
 
-function stripStrings(src) {
-  return src
-    .replace(/\[(=*)\[[\s\S]*?\]\1\]/g, '""')
-    .replace(/"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g, '""');
+/**
+ * One pass over Lua source: drops comments (keeping line breaks) and replaces
+ * each string literal with a "S<n>" placeholder, so the lint only sees code.
+ */
+function scan(src) {
+  const strings = [];
+  const breaks = (text) => text.replace(/[^\n]/g, '');
+  const longEnd = (from, level) => {
+    const close = `]${level}]`;
+    const at = src.indexOf(close, from);
+    return at < 0 ? [src.length, src.length] : [at, at + close.length];
+  };
+  let code = '';
+  let i = 0;
+  while (i < src.length) {
+    if (src.startsWith('--', i)) {
+      LONG_OPEN.lastIndex = i + 2;
+      const long = LONG_OPEN.exec(src);
+      const end = long ? longEnd(LONG_OPEN.lastIndex, long[1])[1] : src.indexOf('\n', i);
+      const stop = end < 0 ? src.length : end;
+      code += breaks(src.slice(i, stop));
+      i = stop;
+      continue;
+    }
+    LONG_OPEN.lastIndex = i;
+    const long = src[i] === '[' ? LONG_OPEN.exec(src) : null;
+    if (long) {
+      const [contentEnd, end] = longEnd(LONG_OPEN.lastIndex, long[1]);
+      strings.push(src.slice(LONG_OPEN.lastIndex, contentEnd));
+      code += `"S${strings.length - 1}"${breaks(src.slice(i, end))}`;
+      i = end;
+      continue;
+    }
+    const quote = src[i];
+    if (quote === '"' || quote === "'") {
+      let j = i + 1;
+      let value = '';
+      while (j < src.length && src[j] !== quote && src[j] !== '\n') {
+        value += src[j] === '\\' ? (src[j + 1] ?? '') : src[j];
+        j += src[j] === '\\' ? 2 : 1;
+      }
+      strings.push(value);
+      code += `"S${strings.length - 1}"`;
+      i = j + 1;
+      continue;
+    }
+    code += src[i];
+    i++;
+  }
+  return { code, strings };
 }
 
 function modulePath(name) {
@@ -50,8 +99,7 @@ while (queue.length > 0) {
   const path = modulePath(name);
   const text = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
   modules[name] = text;
-  const noComments = stripComments(text);
-  const code = stripStrings(noComments);
+  const { code, strings } = scan(text);
   if (!name.startsWith('scoreosis.')) {
     code.split('\n').forEach((line, i) => {
       for (const [pattern, why] of FORBIDDEN) {
@@ -59,8 +107,13 @@ while (queue.length > 0) {
       }
     });
   }
-  const required = [...noComments.matchAll(/\brequire\s*\(?\s*["']([\w.]+)["']/g)].map((m) => m[1]);
-  if ((code.match(/\brequire\b/g) ?? []).length !== required.length) {
+  const required = [...code.matchAll(/\brequire\s*\(?\s*"S(\d+)"/g)].map(
+    (m) => strings[Number(m[1])],
+  );
+  if (
+    (code.match(/\brequire\b/g) ?? []).length !== required.length ||
+    required.some((r) => !/^[\w.]+$/.test(r ?? ''))
+  ) {
     problems.push(`${name}: only literal require "module" calls are supported`);
   }
   queue.push(...required);

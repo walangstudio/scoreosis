@@ -194,3 +194,108 @@ function failingStores(stores: Stores, shouldFail: () => boolean): Stores {
     streaks: wrap(stores.streaks),
   };
 }
+
+/** Shrinks one player's verifier budget so input piles up unverified. */
+async function starve(token: string, instructions: number) {
+  await runInDurableObject(stubFor(token), (instance) => {
+    Object.assign(instance, { env: { ...env, VERIFY_INSTRUCTIONS: String(instructions) } });
+  });
+}
+
+describe('review regressions', () => {
+  it('rejects input after the end even when it was queued behind the verifier', async () => {
+    const clock = useClock();
+    const player = await Player.create(3);
+    await player.start();
+    await starve(player.token, 20_000);
+    while (!player.finished) {
+      clock.advance(1000);
+      expect((await player.send(player.play())).status).toBe(200);
+    }
+    clock.advance(1000);
+    const extra = await player.send({ seq: player.seq, from_tick: player.tick, inputs: '60:0' });
+    expect(extra.status).toBe(200);
+    player.tick += 60;
+    let res = await player.finish();
+    for (let i = 0; i < 400 && res.body.status === 'verifying'; i++) {
+      clock.advance(1000);
+      await runDurableObjectAlarm(stubFor(player.token));
+      res = await player.finish();
+    }
+    expect(res.body).toEqual({ status: 'rejected', reason: 'input_after_end' });
+  });
+
+  it('keeps verifying an older run while a new one plays', async () => {
+    const clock = useClock();
+    const player = await Player.create(5);
+    await player.start();
+    await starve(player.token, 150_000);
+    while (!player.finished) {
+      clock.advance(1000);
+      await player.send(player.play());
+    }
+    expect((await player.finish()).body.status).toBe('verifying');
+    const first = player.run.run_id;
+    const firstTick = player.tick;
+    await player.start();
+    for (let s = 0; s < 20; s++) {
+      clock.advance(1000);
+      await player.send(player.play());
+      await runDurableObjectAlarm(stubFor(player.token));
+    }
+    let res: Awaited<ReturnType<typeof api>> | undefined;
+    for (let i = 0; i < 400; i++) {
+      res = await api(`/v1/games/ahsteroids/runs/${first}/finish`, {
+        token: player.token,
+        body: { tick: firstTick },
+      });
+      if (res.body.status !== 'verifying') break;
+      clock.advance(1000);
+      await runDurableObjectAlarm(stubFor(player.token));
+    }
+    expect(res?.body.status).toBe('finished');
+  });
+
+  it('rejects a run whose checkpoint is corrupt instead of failing every request', async () => {
+    const clock = useClock();
+    const player = await Player.create(9);
+    await player.start();
+    for (let s = 0; s < 12; s++) {
+      clock.advance(1000);
+      await player.send(player.play());
+    }
+    const stub = stubFor(player.token);
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec("UPDATE checkpoints SET data = '{garbage'");
+    });
+    await evictDurableObject(stub);
+    clock.advance(1000);
+    const res = await player.send(player.play());
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'rejected', reason: 'verifier_error' });
+  });
+
+  it('suppresses results of a ruleset disabled while the run was in flight', async () => {
+    const clock = useClock();
+    const player = await Player.create(4);
+    await player.start();
+    await api('/v1/admin/games/ahsteroids/rulesets/45629a5a0139f70a/disable', {
+      body: {},
+      headers: { authorization: 'Bearer test-admin-token-0123456789abcdef0123456789' },
+    });
+    try {
+      const res = await player.playToEnd(clock);
+      expect(res.body.status).toBe('finished');
+      const row = await env.DB.prepare('SELECT suppressed FROM results WHERE run_id = ?')
+        .bind(player.run.run_id)
+        .first();
+      expect(row?.suppressed).toBe(1);
+      const best = await env.DB.prepare('SELECT 1 FROM bests WHERE run_id = ?')
+        .bind(player.run.run_id)
+        .first();
+      expect(best).toBeNull();
+    } finally {
+      await env.DB.prepare('DELETE FROM disabled_rulesets').run();
+    }
+  });
+});

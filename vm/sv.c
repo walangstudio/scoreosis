@@ -84,7 +84,10 @@ __attribute__((export_name("sv_soft_left"))) double sv_soft_left(void) { return 
 __attribute__((export_name("sv_open"))) int sv_open(size_t limit) {
   static const char *const unsafe_base[] = {
     "dofile", "loadfile", "load", "loadstring", "require", "module",
-    "getfenv", "setfenv", "newproxy", "collectgarbage", "print", "gcinfo", NULL,
+    "getfenv", "setfenv", "newproxy", "collectgarbage", "print", "gcinfo",
+    /* Errors cannot be caught here (see LUAI_TRY), so a module that catches them
+       would behave differently on clients. */
+    "pcall", "xpcall", "coroutine", NULL,
   };
   static const char *const unsafe_math[] = {
     "random", "randomseed", "sin", "cos", "tan", "asin", "acos", "atan",
