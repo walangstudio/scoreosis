@@ -11,6 +11,7 @@ import { sqliteStores } from '../src/badgetrip-sqlite.js';
 import { registry } from '../src/games.js';
 import { type PublishedResult, publishResult } from '../src/leaderboard.js';
 import { Player, api, stubFor, useClock } from './client.js';
+import { RULESET } from './fixtures.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -146,7 +147,7 @@ describe('recovery', () => {
       run_id: '',
       game_id: 'ahsteroids',
       board: 'classic',
-      ruleset: '45629a5a0139f70a',
+      ruleset: RULESET,
       player_id: 'f'.repeat(32),
       score: 0,
       runtime: 'web',
@@ -202,6 +203,8 @@ async function starve(token: string, instructions: number) {
   });
 }
 
+// The starved-budget tests drain a large backlog one request at a time; a
+// timeout would leave their loops advancing the shared fake clock for later tests.
 describe('review regressions', () => {
   it('rejects input after the end even when it was queued behind the verifier', async () => {
     const clock = useClock();
@@ -223,7 +226,7 @@ describe('review regressions', () => {
       res = await player.finish();
     }
     expect(res.body).toEqual({ status: 'rejected', reason: 'input_after_end' });
-  });
+  }, 60_000);
 
   it('keeps verifying an older run while a new one plays', async () => {
     const clock = useClock();
@@ -254,7 +257,7 @@ describe('review regressions', () => {
       await runDurableObjectAlarm(stubFor(player.token));
     }
     expect(res?.body.status).toBe('finished');
-  });
+  }, 60_000);
 
   it('rejects a run whose checkpoint is corrupt instead of failing every request', async () => {
     const clock = useClock();
@@ -279,7 +282,7 @@ describe('review regressions', () => {
     const clock = useClock();
     const player = await Player.create(4);
     await player.start();
-    await api('/v1/admin/games/ahsteroids/rulesets/45629a5a0139f70a/disable', {
+    await api(`/v1/admin/games/ahsteroids/rulesets/${RULESET}/disable`, {
       body: {},
       headers: { authorization: 'Bearer test-admin-token-0123456789abcdef0123456789' },
     });

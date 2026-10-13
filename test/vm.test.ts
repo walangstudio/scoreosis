@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import bundle from '../games/ahsteroids/rulesets/45629a5a0139f70a.json';
 import driver from '../src/vm/driver.lua';
 import { LuaVm, VmError } from '../src/vm/host.js';
 import wasm from '../src/vm/lua51.wasm';
+import { bundle } from './fixtures.js';
 
 const limits = { memory: 32 << 20, instructions: 50_000_000 };
 

@@ -58,3 +58,6 @@ Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> pl
 - Spend capacity (limiter, admission, D1) only after the credential check in the player's object; doing it in the Worker let forged tokens drain the daily quota.
 - Resume shifts the timing baseline by the paused time only; resetting it to "now" let pause cycles forgive slow motion and bank lead.
 - Keep every Lua VM call inside the verifier's try block; a corrupt checkpoint thrown from `load()` turned every request into a 500.
+- Keep `useClock()`'s fake start far from the real date; workerd fires alarms on real time, and a near-now fake clock made alarm tests flaky.
+- Give long loop tests an explicit timeout; a timed-out loop keeps advancing the shared fake clock and breaks the tests after it.
+- Measure lag from the Worker's arrival time and anchor the baseline at the first chunk; local wrangler dev takes seconds per request and exposed every place server latency counted as player lag.

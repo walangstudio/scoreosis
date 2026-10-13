@@ -23,6 +23,10 @@ const DRIFT_MAX_TICKS = 60;
 export const PAUSE_MAX_MS = 15 * 60_000;
 export const PAUSE_TOTAL_MS = 60 * 60_000;
 export const RUN_EXPIRY_MS = 24 * 3_600_000;
+/** Longest gap between the last input and the pause request: the flush and pause round trips. */
+const PAUSE_GRACE_MS = 2_000;
+/** Most start-up latency the first chunk may absorb. */
+const START_GRACE_MS = 5_000;
 const CHECKPOINT_EVERY_TICKS = 600;
 const TRACE_RETENTION_MS = 7 * 24 * 3_600_000;
 const MAX_BACKOFF_MS = 3_600_000;
@@ -85,6 +89,15 @@ CREATE TABLE IF NOT EXISTS outbox (
   run_id TEXT PRIMARY KEY, payload TEXT NOT NULL, attempts INTEGER NOT NULL, next_attempt_at INTEGER NOT NULL
 );
 `;
+
+export type InputChunk = {
+  seq: number;
+  fromTick: number;
+  inputs: string;
+  checksum?: number;
+  /** First chunk only: client wall time since it started ticking. */
+  elapsedMs?: number;
+};
 
 export type StartResult = {
   run_id: string;
@@ -229,10 +242,11 @@ export class PlayerSession extends DurableObject<Env> {
   async submitInputs(
     secretHash: string,
     runId: string,
-    chunk: { seq: number; fromTick: number; inputs: string; checksum?: number },
+    chunk: InputChunk,
+    receivedAt: number,
   ): Promise<{ ok: true; ack: Ack } | Failure> {
     return this.guard(secretHash, async () => {
-      const now = Date.now();
+      const now = arrival(receivedAt);
       const run = this.run(runId);
       const body = JSON.stringify([
         chunk.seq,
@@ -268,6 +282,9 @@ export class PlayerSession extends DurableObject<Env> {
         CHUNK_MAX_TICKS,
       );
       const endTick = ticks + tickCount(runs);
+      if (chunk.seq === 0) {
+        this.anchorBaseline(run, chunk.elapsedMs ?? (endTick * 1000) / TICK_RATE, now);
+      }
       const timing = this.checkTiming(run, endTick, now);
       if (timing) {
         this.reject(run, 'timing', now);
@@ -293,9 +310,10 @@ export class PlayerSession extends DurableObject<Env> {
     secretHash: string,
     runId: string,
     tick: number,
+    receivedAt: number,
   ): Promise<{ ok: true; ack: Ack } | Failure> {
     return this.guard(secretHash, async () => {
-      const now = Date.now();
+      const now = arrival(receivedAt);
       const run = this.expireIfStale(this.run(runId), now);
       if (run.status !== 'active') {
         throw new ApiError('run_not_active', `run is ${run.status}`, { reason: run.reason });
@@ -303,12 +321,26 @@ export class PlayerSession extends DurableObject<Env> {
       const { ticks, nextSeq } = this.received(runId);
       if (tick !== ticks)
         throw new ApiError('sequence_conflict', `flush input up to tick ${tick} first`);
-      const timing = this.checkTiming(run, ticks, now);
-      if (timing) {
+      // The pause takes effect when the last input arrived; the flush and pause
+      // round trips after the client froze count as paused time. The lag that
+      // input showed (already within the window) carries past the pause.
+      const lastInput =
+        this.sql
+          .exec<{ at: number | null }>(
+            'SELECT max(received_at) AS at FROM inputs WHERE run_id = ?',
+            runId,
+          )
+          .one().at ?? run.baseline_ms;
+      const pausedAt = Math.max(lastInput, run.baseline_ms);
+      if (now - pausedAt > PAUSE_GRACE_MS) {
         this.reject(run, 'timing', now);
-        throw new ApiError('timing_rejected', timing);
+        throw new ApiError('timing_rejected', 'pause arrived too long after the last input');
       }
-      this.sql.exec("UPDATE runs SET status = 'paused', paused_at = ? WHERE id = ?", now, runId);
+      this.sql.exec(
+        "UPDATE runs SET status = 'paused', paused_at = ? WHERE id = ?",
+        pausedAt,
+        runId,
+      );
       await this.scheduleAlarm();
       return { ack: this.ack(this.run(runId), nextSeq - 1) };
     });
@@ -677,10 +709,11 @@ export class PlayerSession extends DurableObject<Env> {
 
   /** Time after which missing input means the connection was lost. */
   private lossDeadline(run: RunRow): number {
-    const { ticks } = this.received(run.id);
+    const { ticks, nextSeq } = this.received(run.id);
+    // Until the first chunk anchors the baseline, a slow start response must not count.
+    const baseline = nextSeq === 0 ? run.baseline_ms + START_GRACE_MS : run.baseline_ms;
     return (
-      run.baseline_ms +
-      ((ticks - run.baseline_tick + WINDOW_TICKS + CHUNK_MAX_TICKS) * 1000) / TICK_RATE
+      baseline + ((ticks - run.baseline_tick + WINDOW_TICKS + CHUNK_MAX_TICKS) * 1000) / TICK_RATE
     );
   }
 
@@ -722,6 +755,20 @@ export class PlayerSession extends DurableObject<Env> {
     );
     if (this.loaded?.runId === run.id) this.loaded = undefined;
     log('run_rejected', { run: run.id, ruleset: run.ruleset, reason });
+  }
+
+  /**
+   * The client starts ticking when the start response arrives, so the first
+   * chunk anchors real time instead of run creation: start-up latency is not lag.
+   * `elapsedMs` is the client's wall time since it started (ticks if absent).
+   * The anchor never precedes creation (no head start) and is capped so a
+   * delayed first chunk or a false claim buys at most START_GRACE_MS.
+   */
+  private anchorBaseline(run: RunRow, elapsedMs: number, now: number): void {
+    const anchored = now - elapsedMs;
+    const baseline = Math.min(run.created_at + START_GRACE_MS, Math.max(run.created_at, anchored));
+    this.sql.exec('UPDATE runs SET baseline_ms = ? WHERE id = ?', baseline, run.id);
+    run.baseline_ms = baseline;
   }
 
   /** Returns why input ending at `endTick` cannot have been played in real time, if so. */
@@ -872,4 +919,13 @@ function isVerifierFault(error: unknown): boolean {
     error instanceof WebAssembly.RuntimeError ||
     error instanceof RangeError
   );
+}
+
+/**
+ * When the Worker received the request. Timing checks use it so time spent
+ * queued behind verification in this object never counts as player lag.
+ */
+function arrival(receivedAt: number): number {
+  const now = Date.now();
+  return Number.isFinite(receivedAt) ? Math.min(now, Math.max(receivedAt, now - 10_000)) : now;
 }

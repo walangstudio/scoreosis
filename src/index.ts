@@ -10,7 +10,7 @@ import {
   rebuildBests,
 } from './leaderboard.js';
 import { log } from './log.js';
-import type { PlayerSession } from './session.js';
+import type { InputChunk, PlayerSession } from './session.js';
 import { int, optionalInt, readJson, str } from './validate.js';
 
 export { PlayerSession } from './session.js';
@@ -24,7 +24,13 @@ const BUILD_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 type Route = { method: string; pattern: RegExp; handler: Handler };
 type Handler = (ctx: RequestContext, params: string[]) => Promise<Response>;
-type RequestContext = { request: Request; env: Env; url: URL; exec: ExecutionContext };
+type RequestContext = {
+  request: Request;
+  env: Env;
+  url: URL;
+  exec: ExecutionContext;
+  receivedAt: number;
+};
 
 const routes: Route[] = [];
 const route = (method: string, pattern: RegExp, handler: Handler) =>
@@ -32,12 +38,13 @@ const route = (method: string, pattern: RegExp, handler: Handler) =>
 
 export default {
   async fetch(request, env, exec): Promise<Response> {
+    const receivedAt = Date.now();
     const url = new URL(request.url);
     const cors = corsHeaders(request, env);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     let response: Response;
     try {
-      response = await dispatch({ request, env, url, exec });
+      response = await dispatch({ request, env, url, exec, receivedAt });
     } catch (error) {
       if (error instanceof ApiError) response = errorResponse(error.failure);
       else {
@@ -128,10 +135,15 @@ route(
     const q = url.searchParams;
     const board = q.get('board') ?? game.defaultBoard;
     if (!game.boards.has(board)) throw new ApiError('bad_request', 'unknown board');
+    // country=auto is the caller's own country; such responses vary per caller.
+    const auto = q.get('country') === 'auto';
+    const visibility = auto ? 'private' : 'public';
     const filter: BoardFilter = {
       game: game.id,
       board,
-      country: optionalParam(q, 'country', /^[A-Z]{2}$/),
+      country: auto
+        ? normalizeCountry((request.cf as { country?: string } | undefined)?.country)
+        : optionalParam(q, 'country', /^[A-Z]{2}$/),
       runtime: optionalParam(q, 'runtime', new RegExp(`^(${RUNTIMES.join('|')})$`)),
       channel: optionalParam(q, 'channel', new RegExp(`^(${CHANNELS.join('|')})$`)),
     };
@@ -142,7 +154,7 @@ route(
     const cacheKey = new Request(
       `${url.origin}/v1/games/${game.id}/leaderboards?${new URLSearchParams({
         board,
-        country: filter.country ?? '',
+        country: filter.country ?? (auto ? 'unknown' : ''),
         runtime: filter.runtime ?? '',
         channel: filter.channel ?? '',
         page: String(page),
@@ -152,7 +164,7 @@ route(
     const cached = await cache.match(cacheKey);
     let body = cached ? await cached.json<Record<string, unknown>>() : undefined;
     if (!body) {
-      const entries = await leaderboardPage(env.DB, filter, page);
+      const entries = auto && !filter.country ? [] : await leaderboardPage(env.DB, filter, page);
       body = {
         game: game.id,
         board,
@@ -169,11 +181,12 @@ route(
       );
     }
     if (q.get('me') !== '1')
-      return json(body, 200, { 'cache-control': `public, max-age=${BOARD_CACHE_SECONDS}` });
+      return json(body, 200, { 'cache-control': `${visibility}, max-age=${BOARD_CACHE_SECONDS}` });
     const auth = await authenticate(request, env, game.id);
     const checked = await auth.session.check(auth.secretHash);
     if (!checked.ok) return reply(checked, () => null);
-    return json({ ...body, me: await playerRank(env.DB, filter, auth.player) }, 200, {
+    const me = auto && !filter.country ? null : await playerRank(env.DB, filter, auth.player);
+    return json({ ...body, me }, 200, {
       'cache-control': 'private, no-store',
     });
   },
@@ -209,23 +222,21 @@ route('POST', /^\/v1\/games\/([a-z0-9_]+)\/runs$/, async ({ request, env }, [gam
 route(
   'POST',
   /^\/v1\/games\/([a-z0-9_]+)\/runs\/([0-9a-f-]+)\/inputs$/,
-  async ({ request, env }, [gameId = '', runId = '']) => {
+  async ({ request, env, receivedAt }, [gameId = '', runId = '']) => {
     const game = getGame(gameId);
     const auth = await authenticate(request, env, game.id);
     const body = await readJson(request, INPUT_LIMIT);
-    const chunk = {
+    const chunk: InputChunk = {
       seq: int(body, 'seq', 0, 1_000_000),
       fromTick: int(body, 'from_tick', 0, 100_000_000),
       inputs: str(body, 'inputs', /^[0-9:,]{3,12000}$/),
-      checksum: optionalInt(body, 'checksum', 0, 2147483646),
     };
-    const { checksum, ...rest } = chunk;
+    const checksum = optionalInt(body, 'checksum', 0, 2147483646);
+    if (checksum !== undefined) chunk.checksum = checksum;
+    const elapsedMs = optionalInt(body, 'elapsed_ms', 0, 60_000);
+    if (elapsedMs !== undefined) chunk.elapsedMs = elapsedMs;
     return reply(
-      await auth.session.submitInputs(
-        auth.secretHash,
-        runIdOf(runId),
-        checksum === undefined ? rest : chunk,
-      ),
+      await auth.session.submitInputs(auth.secretHash, runIdOf(runId), chunk, receivedAt),
       (r) => r.ack,
     );
   },
@@ -234,11 +245,16 @@ route(
 route(
   'POST',
   /^\/v1\/games\/([a-z0-9_]+)\/runs\/([0-9a-f-]+)\/pause$/,
-  async ({ request, env }, [gameId = '', runId = '']) => {
+  async ({ request, env, receivedAt }, [gameId = '', runId = '']) => {
     const auth = await authenticate(request, env, getGame(gameId).id);
     const body = await readJson(request, JSON_LIMIT);
     return reply(
-      await auth.session.pause(auth.secretHash, runIdOf(runId), int(body, 'tick', 0, 100_000_000)),
+      await auth.session.pause(
+        auth.secretHash,
+        runIdOf(runId),
+        int(body, 'tick', 0, 100_000_000),
+        receivedAt,
+      ),
       (r) => r.ack,
     );
   },

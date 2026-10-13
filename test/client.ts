@@ -1,12 +1,13 @@
 import { SELF, env } from 'cloudflare:test';
 import { vi } from 'vitest';
-import bundle from '../games/ahsteroids/rulesets/45629a5a0139f70a.json';
 import driver from '../src/vm/driver.lua';
 import { LuaVm } from '../src/vm/host.js';
 import wasm from '../src/vm/lua51.wasm';
+import { bundle } from './fixtures.js';
 
 export const BASE = 'https://scoreosis.test';
-export const BUILD = 'ahsteroids-dev-web';
+export { BUILD } from './fixtures.js';
+import { BUILD } from './fixtures.js';
 let requestCount = 0;
 
 export async function api(
@@ -42,7 +43,9 @@ export async function guest(game = 'ahsteroids', build = BUILD): Promise<string>
 }
 
 /** Simulated clock shared by the test and the Durable Objects in this isolate. */
-export function useClock(start = Date.UTC(2026, 9, 13, 12)) {
+// Far in the future: workerd fires alarms on real time, so a fake time near "now"
+// lets alarms race the tests. Tests run alarms with runDurableObjectAlarm.
+export function useClock(start = Date.UTC(2031, 0, 1)) {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(start);
   return { advance: (ms: number) => vi.setSystemTime(Date.now() + ms) };

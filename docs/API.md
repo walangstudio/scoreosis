@@ -69,7 +69,7 @@ Body `{ "build_id" }`. `201`:
 
 ```json
 {
-  "run_id": "…", "seed": 123456789, "ruleset": "45629a5a0139f70a", "board": "classic",
+  "run_id": "…", "seed": 123456789, "ruleset": "96cf239671ce4856", "board": "classic",
   "tick_rate": 60, "chunk_max_ticks": 120, "window_ticks": 90,
   "server_time": 1760356800000, "expires_at": 1760443200000
 }
@@ -87,6 +87,8 @@ Start the ranked simulation with `seed` when this response arrives. Tick 0 is th
 - `from_tick` is the first tick in the chunk; it equals the previous chunk's end.
 - `inputs` is `count:bits` runs, one button bitmask per tick, bits below `2^buttons`.
 - `checksum` (optional, recommended) is `codec.checksum(codec.encode(game.save(sim)))` after the chunk's last tick.
+- `elapsed_ms` (first chunk only, recommended) is the client's wall time since it started ticking. The first chunk anchors the timing baseline, so a slow start response is not counted as lag. The anchor never precedes run creation and is at most 5 s after it.
+- Send everything buffered as soon as the previous chunk is acknowledged and at least 60 ticks are waiting; a slow acknowledgment must not age the next chunk.
 - After the terminal tick, send nothing further.
 
 `200`:
@@ -99,7 +101,7 @@ Start the ranked simulation with `seed` when this response arrives. Tick 0 is th
 
 ### `POST …/runs/:run/pause`
 
-Body `{ "tick" }`, the last tick sent. Flush all input first. The pause starts at that tick once approved.
+Body `{ "tick" }`, the last tick sent. Freeze the game, flush all input, then send this within 2 s of the last chunk. The pause takes effect when that last chunk arrived, so the flush and pause round trips count as paused time.
 
 ### `POST …/runs/:run/resume`
 

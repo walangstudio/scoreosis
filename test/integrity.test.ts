@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Player, api, guest, useClock } from './client.js';
+import { BUILD } from './fixtures.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -29,7 +30,7 @@ describe('isolation', () => {
     for (const t of [forged, 'nonsense', '']) {
       const res = await api('/v1/games/ahsteroids/runs', {
         token: t,
-        body: { build_id: 'ahsteroids-dev-web' },
+        body: { build_id: BUILD },
       });
       expect(res.status).toBe(401);
     }
@@ -47,7 +48,7 @@ describe('isolation', () => {
       const id = crypto.randomUUID().replace(/-/g, '');
       const res = await api('/v1/games/ahsteroids/runs', {
         token: `${id}.${'B'.repeat(43)}`,
-        body: { build_id: 'ahsteroids-dev-web' },
+        body: { build_id: BUILD },
       });
       expect(res.status).toBe(401);
     }
@@ -58,7 +59,7 @@ describe('isolation', () => {
     const token = await guest();
     const res = await api('/v1/games/sneak/runs', {
       token,
-      body: { build_id: 'ahsteroids-dev-web' },
+      body: { build_id: BUILD },
     });
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('unknown_game');
@@ -150,7 +151,7 @@ describe('integrity', () => {
     expect((await player.start()).status).toBe(201);
     const second = await api('/v1/games/ahsteroids/runs', {
       token: player.token,
-      body: { build_id: 'ahsteroids-dev-web' },
+      body: { build_id: BUILD },
     });
     expect(second.status).toBe(409);
     await api(runPath(player, 'abandon'), { token: player.token, body: {} });

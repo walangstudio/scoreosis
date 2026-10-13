@@ -1,6 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { BASE, Player, api } from './client.js';
+import { BUILD, RULESET } from './fixtures.js';
 
 const ADMIN = { authorization: 'Bearer test-admin-token-0123456789abcdef0123456789' };
 
@@ -32,7 +33,7 @@ describe('public API', () => {
     const statuses: number[] = [];
     for (let i = 0; i < 8; i++) {
       const res = await api('/v1/guests', {
-        body: { game_id: 'ahsteroids', build_id: 'ahsteroids-dev-web' },
+        body: { game_id: 'ahsteroids', build_id: BUILD },
         headers: { 'cf-connecting-ip': '198.51.100.7' },
       });
       statuses.push(res.status);
@@ -56,11 +57,11 @@ describe('public API', () => {
 
   it('blocks new runs on a disabled ruleset', async () => {
     const player = await Player.create();
-    const denied = await api('/v1/admin/games/ahsteroids/rulesets/45629a5a0139f70a/disable', {
+    const denied = await api(`/v1/admin/games/ahsteroids/rulesets/${RULESET}/disable`, {
       body: {},
     });
     expect(denied.status).toBe(403);
-    const ok = await api('/v1/admin/games/ahsteroids/rulesets/45629a5a0139f70a/disable', {
+    const ok = await api(`/v1/admin/games/ahsteroids/rulesets/${RULESET}/disable`, {
       body: {},
       headers: ADMIN,
     });

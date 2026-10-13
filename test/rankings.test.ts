@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { type PublishedResult, publishResult } from '../src/leaderboard.js';
 import { api } from './client.js';
+import { RULESET } from './fixtures.js';
 
 const ADMIN = { authorization: 'Bearer test-admin-token-0123456789abcdef0123456789' };
 let n = 0;
@@ -21,7 +22,7 @@ async function result(playerId: string, score: number, extra: Partial<PublishedR
     run_id: crypto.randomUUID(),
     game_id: 'ahsteroids',
     board: 'classic',
-    ruleset: '45629a5a0139f70a',
+    ruleset: RULESET,
     player_id: playerId,
     score,
     runtime: 'web',
@@ -82,6 +83,12 @@ describe('leaderboards', () => {
     expect(names(await board('?country=PH&runtime=android'))).toEqual(['cy', 'ana']);
     expect(names(await board())).toContain('ben');
     expect(names(await board('?country=US'))).toEqual(['ana']);
+  });
+
+  it("resolves country=auto to the caller's country, never to the world board", async () => {
+    const unknown = await board('?country=auto');
+    expect(unknown.entries).toEqual([]);
+    expect(unknown.filters.country).toBeNull();
   });
 
   it('pages 25 at a time up to rank 100', async () => {

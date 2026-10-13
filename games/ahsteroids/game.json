@@ -4,18 +4,18 @@
   "source": "Y:/projs/walangstudio/ahsteroids",
   "entry": "game.ranked",
   "boards": {
-    "classic": ["45629a5a0139f70a"]
+    "classic": ["96cf239671ce4856"]
   },
   "builds": [
     {
-      "id": "ahsteroids-dev-web",
-      "ruleset": "45629a5a0139f70a",
+      "id": "ahsteroids-web-direct-0.1.0",
+      "ruleset": "96cf239671ce4856",
       "runtime": "web",
       "channel": "direct"
     },
     {
-      "id": "ahsteroids-dev-windows",
-      "ruleset": "45629a5a0139f70a",
+      "id": "ahsteroids-windows-direct-0.1.0",
+      "ruleset": "96cf239671ce4856",
       "runtime": "windows",
       "channel": "direct"
     }

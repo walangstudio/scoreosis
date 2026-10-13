@@ -13,6 +13,7 @@ local TICK_RATE = 60
 local CHUNK_TICKS = 60
 local MAX_CHUNK_TICKS = 120
 local MAX_TICKS_PER_FRAME = 8
+local MAX_BACKLOG_TICKS = 120
 local RETRIES = 3
 
 -- client: scoreosis.client; game: ranked module; now(): wall-clock seconds.
@@ -26,7 +27,6 @@ function M.new(client, game, now)
 		sent_tick = 0,
 		seq = 0,
 		pending = {},
-		checksums = {},
 		in_flight = false,
 	}, M)
 end
@@ -59,6 +59,7 @@ function M:start(callback)
 			self.sim = self.game.new(run.seed)
 			self.status = "ranked"
 			self.base_time, self.base_tick = self.now(), 0
+			self.started_at = self.base_time
 			callback(true)
 		end, true)
 	end)
@@ -71,12 +72,13 @@ function M:due()
 	-- The epsilon keeps float drift in frame times from landing a hair short of a tick.
 	local target = self.base_tick + math.floor((self.now() - self.base_time) * TICK_RATE + 1e-6)
 	local owed = target - self.tick
-	if owed > MAX_TICKS_PER_FRAME then
-		-- Too far behind to catch up; drop the time. A ranked run this late is lost anyway.
-		self.base_time = self.now() - (self.tick + MAX_TICKS_PER_FRAME - self.base_tick) / TICK_RATE
-		owed = MAX_TICKS_PER_FRAME
+	if owed > MAX_BACKLOG_TICKS then
+		-- Hopelessly behind (a long stall): drop the time. A ranked run this late is lost anyway.
+		self.base_time = self.now() - (self.tick - self.base_tick) / TICK_RATE
+		owed = 0
 	end
-	return math.max(0, owed)
+	-- Frame hitches are caught up a few ticks per frame instead of forfeited.
+	return math.max(0, math.min(owed, MAX_TICKS_PER_FRAME))
 end
 
 -- Advances one tick with the button bitmask.
@@ -85,43 +87,33 @@ function M:step(bits)
 	self.tick = self.tick + 1
 	if self.status == "local" then return end
 	self.pending[#self.pending + 1] = bits
-	if self.tick % CHUNK_TICKS == 0 or self.game.finished(self.sim) then
-		self.checksums[self.tick] = codec.checksum(codec.encode(self.game.save(self.sim)))
-	end
 	self:flush()
 	if self.game.finished(self.sim) then self:finish() end
 end
 
--- Sends buffered ticks up to the latest checksummed boundary, or all of them
--- while a drain is waiting. One request in flight at a time.
+-- Sends everything buffered once a second's worth has built up (any amount
+-- while draining), as soon as the previous request is acknowledged, so a slow
+-- acknowledgment never ages the next chunk. The checksum is the state at the
+-- chunk's last tick: the current state unless more than MAX_CHUNK_TICKS piled up.
 function M:flush()
 	if self.in_flight or self.status == "local" then return end
-	local draining = self.drained ~= nil
-	local last
-	for i = math.min(#self.pending, MAX_CHUNK_TICKS), 1, -1 do
-		if self.checksums[self.sent_tick + i] or (draining and i == #self.pending) then
-			last = i
-			break
-		end
-	end
-	if not last then
-		if draining and #self.pending == 0 then
+	local count = #self.pending
+	if count == 0 or (count < CHUNK_TICKS and not self.drained) then
+		if count == 0 and self.drained then
 			local waiter = self.drained
 			self.drained = nil
 			waiter(true)
 		end
 		return
 	end
+	local last = math.min(count, MAX_CHUNK_TICKS)
 	local end_tick = self.sent_tick + last
-	local checksum = self.checksums[end_tick] or codec.checksum(codec.encode(self.game.save(self.sim)))
 	local ticks = {}
 	for i = 1, last do ticks[i] = self.pending[i] end
-	local body = {
-		seq = self.seq,
-		from_tick = self.sent_tick,
-		inputs = codec.encode_inputs(ticks),
-		checksum = checksum,
-	}
+	local body = { seq = self.seq, from_tick = self.sent_tick, inputs = codec.encode_inputs(ticks) }
+	-- The first chunk tells the server when play really began (see anchorBaseline).
+	if self.seq == 0 then body.elapsed_ms = math.floor((self.now() - self.started_at) * 1000) end
+	if last == count then body.checksum = codec.checksum(codec.encode(self.game.save(self.sim))) end
 	self.in_flight = true
 	self:send(body, RETRIES, function(ok, ack)
 		self.in_flight = false
@@ -138,7 +130,6 @@ function M:flush()
 		local rest = {}
 		for i = last + 1, #self.pending do rest[#rest + 1] = self.pending[i] end
 		self.pending = rest
-		self.checksums[end_tick] = nil
 		self:flush()
 	end)
 end

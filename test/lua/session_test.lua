@@ -100,6 +100,7 @@ test("paces ticks by wall clock and sends one checksummed chunk per second", fun
 	eq(body.from_tick, 0)
 	eq(body.inputs, "60:1")
 	eq(body.checksum, codec.checksum(codec.encode({ seed = 9, tick = 60, score = 60 })))
+	assert(body.elapsed_ms >= 999 and body.elapsed_ms <= 1001, "first chunk reports elapsed wall time")
 end)
 
 test("keeps one request in flight and batches the backlog", function()
@@ -110,6 +111,16 @@ test("keeps one request in flight and batches the backlog", function()
 	eq(#f.requests, 1)
 	eq(f.requests[1].body.seq, 1)
 	eq(f.requests[1].body.from_tick, 60)
+end)
+
+test("after a slow acknowledgment the next chunk reaches the current tick", function()
+	local f, s = started()
+	play(f, s, 2.4)
+	f.answer(200, { status = "active" })
+	local body = f.requests[1].body
+	eq(body.from_tick, 60)
+	eq(body.inputs, "84:1")
+	eq(body.checksum, codec.checksum(codec.encode({ seed = 9, tick = 144, score = 144 })))
 end)
 
 test("retries a failed upload with the identical body", function()
@@ -183,6 +194,21 @@ test("a failed pause leaves the run local and still answers the caller", functio
 	eq(answered, false)
 	eq(s.status, "local")
 	eq(s.reason, "connection_lost")
+end)
+
+test("catches up after a frame hitch instead of losing the time", function()
+	local f, s = started()
+	play(f, s, 1)
+	f.time = f.time + 0.5
+	local steps = 0
+	for _ = 1, 10 do
+		local owed = s:due()
+		assert(owed <= 8, "at most 8 ticks per frame")
+		for _ = 1, owed do s:step(1) end
+		steps = steps + owed
+	end
+	eq(steps, 30)
+	eq(s.tick, 90)
 end)
 
 test("local progress mirrors best-run and total semantics", function()
