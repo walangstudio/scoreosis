@@ -1,0 +1,57 @@
+# CLAUDE.md
+
+Scoreosis: verified multi-game leaderboards and achievements. Cloudflare Workers + Durable Objects (SQLite) + D1, TypeScript 5.9, Lua 5.1 compiled to Wasm.
+
+- `src/` - Worker (`index.ts`), `PlayerSession` Durable Object (`session.ts`), D1 leaderboards, BadgeTrip SQLite stores
+- `src/vm/` - Wasm host, server driver (`driver.lua`), built `lua51.wasm`
+- `vm/sv.c` - C glue for the sandboxed Lua state; `tools/build-vm.mjs` builds it with zig 0.16.0
+- `scoreosis/` - Lua library shared with games (`detmath`, `codec`); games vendor it via `tools/sync-client.mjs`
+- `games/<id>/` - `game.json` (builds, boards) and packed `rulesets/*.json`
+- `migrations/` - D1 schema
+- `test/` - vitest in workerd via `@cloudflare/vitest-plugin`
+
+## The loop
+
+```bash
+npx tsc --noEmit
+npx biome check .
+CI=true npx vitest run
+```
+
+Parity check after touching `scoreosis/`, `driver.lua`, `vm/sv.c` or a game's ranked modules:
+
+```bash
+node tools/trace.mjs games/ahsteroids/rulesets/<r>.json 12345 900 > a.txt
+python tools/trace.py games/ahsteroids/rulesets/<r>.json 12345 900 luajit | tr -d '\r' > b.txt
+cmp a.txt b.txt
+```
+
+- Write the failing test first. Watch it fail for the right reason.
+- Never hand-edit `games/*/rulesets/*.json`, `games/rulesets.generated.ts`, `src/vm/lua51.wasm` or `worker-configuration.d.ts`. Regenerate: `node tools/pack-game.mjs <id>`, `pnpm build:vm`, `npx wrangler types`.
+
+## Architecture
+
+Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> player's Durable Object (`<game>:<player>`) checks the token hash, timing and sequence -> stores input -> advances the VM within `VERIFY_INSTRUCTIONS` -> on the terminal tick, one `ctx.storage.transaction` for BadgeTrip + run + outbox -> outbox publishes to D1.
+
+- The server never accepts a score. Facts come from `sv_facts` of the server's own replay.
+- Ranked Lua must be bit-deterministic: no platform math, no `math.random`, no `pairs`-order dependence. The packer and the VM both enforce it.
+- A Lua error makes the VM unusable (`VmError`); drop it and reload from the checkpoint.
+- Durable Object `Date.now()` is frozen during a request; tests drive time with `useClock()` (fake timers reach the objects in the same isolate).
+
+| You need | Look in |
+| --- | --- |
+| Routes, auth parsing, CORS, admission | `src/index.ts` |
+| Timing, pause, verify, finalize, outbox | `src/session.ts` |
+| Error codes | `src/errors.ts`, docs/API.md |
+| Achievement mapping | `src/achievements.ts` |
+| Env vars and bindings | `wrangler.jsonc` |
+| Game contract | docs/INTEGRATION.md |
+
+## Failure log
+
+- Insert detection on Durable Object SQLite uses `RETURNING`, never `cursor.rowsWritten`; it reported a duplicate `ON CONFLICT DO NOTHING` insert into the AUTOINCREMENT table as written.
+- Re-read the run row after `expireIfStale`; handlers that kept the old row accepted input on expired runs.
+- Storage from `runInDurableObject` cannot be used after the callback returns; route each call through `runInDurableObject` (see `test/store-contract.test.ts`).
+- Public leaderboard responses are cached 30 s; tests that change rankings must query a filter combination not fetched before.
+- Python on Windows prints CRLF; strip `\r` before comparing `trace.py` output with `trace.mjs`.
+- Edit regex-bearing `tools/*.mjs` with the Edit tool; a Bash heredoc dropped backslashes from a regex in `pack-game.mjs`.
