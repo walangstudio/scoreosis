@@ -235,9 +235,11 @@ export class PlayerSession extends DurableObject<Env> {
         }
         return { ack: this.ack(run, chunk.seq) };
       }
-      this.expireIfStale(run, now);
-      if (run.status !== 'active') {
-        throw new ApiError('run_not_active', `run is ${run.status}`, { reason: run.reason });
+      const current = this.expireIfStale(run, now);
+      if (current.status !== 'active') {
+        throw new ApiError('run_not_active', `run is ${current.status}`, {
+          reason: current.reason,
+        });
       }
       const { nextSeq, ticks } = this.received(runId);
       if (chunk.seq !== nextSeq) throw new ApiError('sequence_conflict', `expected seq ${nextSeq}`);
@@ -253,10 +255,6 @@ export class PlayerSession extends DurableObject<Env> {
       if (timing) {
         this.reject(run, 'timing', now);
         throw new ApiError('timing_rejected', timing);
-      }
-      if (this.loaded?.runId === runId && this.loaded.status === 'finished') {
-        this.reject(run, 'input_after_end', now);
-        throw new ApiError('run_rejected', 'the run already ended at the server');
       }
       this.sql.exec(
         'INSERT INTO inputs (run_id, seq, from_tick, ticks, runs, checksum, body, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -281,9 +279,10 @@ export class PlayerSession extends DurableObject<Env> {
   ): Promise<{ ok: true; ack: Ack } | Failure> {
     return this.guard(secretHash, async () => {
       const now = Date.now();
-      const run = this.run(runId);
-      this.expireIfStale(run, now);
-      if (run.status !== 'active') throw new ApiError('run_not_active', `run is ${run.status}`);
+      const run = this.expireIfStale(this.run(runId), now);
+      if (run.status !== 'active') {
+        throw new ApiError('run_not_active', `run is ${run.status}`, { reason: run.reason });
+      }
       const { ticks, nextSeq } = this.received(runId);
       if (tick !== ticks)
         throw new ApiError('sequence_conflict', `flush input up to tick ${tick} first`);
@@ -304,8 +303,7 @@ export class PlayerSession extends DurableObject<Env> {
   ): Promise<{ ok: true; ack: Ack; server_time: number } | Failure> {
     return this.guard(secretHash, async () => {
       const now = Date.now();
-      const run = this.run(runId);
-      this.expireIfStale(run, now);
+      const run = this.expireIfStale(this.run(runId), now);
       if (run.status !== 'paused' || run.paused_at === null) {
         throw new ApiError('run_not_active', `run is ${run.status}`, { reason: run.reason });
       }
@@ -334,8 +332,7 @@ export class PlayerSession extends DurableObject<Env> {
         const { ticks } = this.received(runId);
         if (tick !== ticks)
           throw new ApiError('sequence_conflict', `flush input up to tick ${tick} first`);
-        this.expireIfStale(run, now);
-        run = this.run(runId);
+        run = this.expireIfStale(run, now);
         if (run.status === 'active' || run.status === 'paused') {
           this.sql.exec(
             "UPDATE runs SET status = 'verifying', final_tick = ? WHERE id = ?",
@@ -575,8 +572,7 @@ export class PlayerSession extends DurableObject<Env> {
     for (const run of this.sql
       .exec<RunRow>("SELECT * FROM runs WHERE status IN ('active', 'paused', 'verifying')")
       .toArray()) {
-      this.expireIfStale(run, now);
-      const current = this.run(run.id);
+      const current = this.expireIfStale(run, now);
       if (current.status === 'verifying') await this.verify(current, now);
     }
     this.sql.exec(
@@ -631,8 +627,10 @@ export class PlayerSession extends DurableObject<Env> {
     );
   }
 
-  private expireIfStale(run: RunRow, now: number): void {
-    if (run.status !== 'active' && run.status !== 'paused' && run.status !== 'verifying') return;
+  /** Expires the run if a deadline passed; returns the run as stored afterwards. */
+  private expireIfStale(run: RunRow, now: number): RunRow {
+    if (run.status !== 'active' && run.status !== 'paused' && run.status !== 'verifying')
+      return run;
     let reason: string | undefined;
     if (now >= run.expires_at) reason = 'session_expired';
     else if (run.status === 'paused' && run.paused_at !== null) {
@@ -640,10 +638,11 @@ export class PlayerSession extends DurableObject<Env> {
       else if (run.paused_total_ms + (now - run.paused_at) > PAUSE_TOTAL_MS)
         reason = 'pause_total_exceeded';
     } else if (run.status === 'active' && now > this.lossDeadline(run)) reason = 'connection_lost';
-    if (!reason) return;
+    if (!reason) return run;
     this.sql.exec("UPDATE runs SET status = 'expired', reason = ? WHERE id = ?", reason, run.id);
     if (this.loaded?.runId === run.id) this.loaded = undefined;
     log('run_expired', { run: run.id, reason });
+    return this.run(run.id);
   }
 
   private reject(run: RunRow, reason: string, now: number): void {

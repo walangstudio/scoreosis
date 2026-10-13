@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env } from 'cloudflare:test';
 import { vi } from 'vitest';
 import bundle from '../games/ahsteroids/rulesets/45629a5a0139f70a.json';
 import driver from '../src/vm/driver.lua';
@@ -24,8 +24,14 @@ export async function api(
   return { status: res.status, body: (await res.json()) as any, headers: res.headers };
 }
 
+let guestCount = 0;
+
 export async function guest(game = 'ahsteroids', build = BUILD): Promise<string> {
-  const res = await api('/v1/guests', { body: { game_id: game, build_id: build } });
+  guestCount++;
+  const res = await api('/v1/guests', {
+    body: { game_id: game, build_id: build },
+    headers: { 'cf-connecting-ip': `203.0.113.${guestCount % 250}` },
+  });
   if (res.status !== 201) throw new Error(`guest failed: ${JSON.stringify(res.body)}`);
   return res.body.token;
 }
@@ -138,4 +144,9 @@ export class Player {
     }
     return res;
   }
+}
+
+export function stubFor(token: string) {
+  const player = token.split('.')[0];
+  return env.PLAYERS.get(env.PLAYERS.idFromName(`ahsteroids:${player}`));
 }

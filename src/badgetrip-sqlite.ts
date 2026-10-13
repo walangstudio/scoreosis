@@ -63,15 +63,15 @@ export function sqliteStores(sql: SqlStorage): Stores {
 
   const events: EventStore = {
     async append(e: Event) {
-      const cursor = sql.exec(
-        'INSERT INTO bt_events (id, actor, type, ts, payload) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING',
+      const inserted = sql.exec(
+        'INSERT INTO bt_events (id, actor, type, ts, payload) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING RETURNING seq',
         e.id,
         e.actor,
         e.type,
         e.ts,
         JSON.stringify(e.payload ?? {}),
       );
-      return cursor.rowsWritten > 0;
+      return inserted.toArray().length > 0;
     },
     async *read(opts) {
       const where: string[] = [];
@@ -166,12 +166,14 @@ export function sqliteStores(sql: SqlStorage): Stores {
   const achievements: AchievementStore = {
     async award(actor, code, at) {
       return (
-        sql.exec(
-          'INSERT INTO bt_achievements (actor, code, at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
-          actor,
-          code,
-          at,
-        ).rowsWritten > 0
+        sql
+          .exec(
+            'INSERT INTO bt_achievements (actor, code, at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING RETURNING code',
+            actor,
+            code,
+            at,
+          )
+          .toArray().length > 0
       );
     },
     async list(actor) {
