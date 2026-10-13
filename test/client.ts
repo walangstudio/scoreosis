@@ -1,5 +1,6 @@
 import { SELF, env } from 'cloudflare:test';
 import { vi } from 'vitest';
+import { registry } from '../src/games.js';
 import driver from '../src/vm/driver.lua';
 import { LuaVm } from '../src/vm/host.js';
 import wasm from '../src/vm/lua51.wasm';
@@ -51,12 +52,21 @@ export function useClock(start = Date.UTC(2031, 0, 1)) {
   return { advance: (ms: number) => vi.setSystemTime(Date.now() + ms) };
 }
 
+/** A game's first registered build; Ah!Steroids uses the fixture build. */
+const defaultBuild = (game: string): string => {
+  const build = game === 'ahsteroids' ? BUILD : registry.get(game)?.builds.keys().next().value;
+  if (!build) throw new Error(`no registered build for ${game}`);
+  return build;
+};
+
 /**
- * Plays Ah!Steroids the way a game client does: its own copy of the ranked
- * simulation, one input chunk per second with the state checksum.
+ * Plays a game the way its client does: its own copy of the ranked simulation,
+ * one input chunk per second with the state checksum. Ah!Steroids by default.
  */
 export class Player {
   token: string;
+  game: string;
+  buttons = bundle.buttons;
   vm!: LuaVm;
   run!: { run_id: string; seed: number };
   seq = 0;
@@ -64,29 +74,33 @@ export class Player {
   finished = false;
   private rng: number;
 
-  private constructor(token: string, inputSeed: number) {
+  private constructor(token: string, inputSeed: number, game: string) {
     this.token = token;
     this.rng = inputSeed;
+    this.game = game;
   }
 
-  static async create(inputSeed = 7, token?: string): Promise<Player> {
-    return new Player(token ?? (await guest()), inputSeed);
+  static async create(inputSeed = 7, token?: string, game = 'ahsteroids'): Promise<Player> {
+    return new Player(token ?? (await guest(game, defaultBuild(game))), inputSeed, game);
   }
 
-  async start(build = BUILD) {
-    const res = await api('/v1/games/ahsteroids/runs', {
+  async start(build = defaultBuild(this.game)) {
+    const res = await api(`/v1/games/${this.game}/runs`, {
       token: this.token,
       body: { build_id: build },
     });
     if (res.status !== 201) return res;
     this.run = res.body;
+    const ruleset = registry.get(this.game)?.builds.get(build)?.ruleset;
+    if (!ruleset) throw new Error(`${build} started but is not in the registry`);
+    this.buttons = ruleset.buttons;
     this.vm = await LuaVm.create({
       wasm,
       driver,
-      modules: bundle.modules,
+      modules: ruleset.modules,
       limits: { memory: 32 << 20, instructions: 1e9 },
     });
-    this.vm.call('sv_start', `game.ranked|${this.run.seed}`);
+    this.vm.call('sv_start', `${ruleset.entry}|${this.run.seed}`);
     this.seq = 0;
     this.tick = 0;
     this.finished = false;
@@ -98,7 +112,7 @@ export class Player {
     const runs: [number, number][] = [];
     for (let left = ticks; left > 0; left -= 20) {
       this.rng = (this.rng * 48271) % 2147483647;
-      runs.push([Math.min(20, left), this.rng % 16]);
+      runs.push([Math.min(20, left), this.rng % 2 ** this.buttons]);
     }
     const [tick, finished, checksum] = this.vm
       .call('sv_steps', runs.map(([c, b]) => `${c}:${b}`).join(','))
@@ -124,14 +138,14 @@ export class Player {
   }
 
   send(chunk: object) {
-    return api(`/v1/games/ahsteroids/runs/${this.run.run_id}/inputs`, {
+    return api(`/v1/games/${this.game}/runs/${this.run.run_id}/inputs`, {
       token: this.token,
       body: chunk,
     });
   }
 
   finish() {
-    return api(`/v1/games/ahsteroids/runs/${this.run.run_id}/finish`, {
+    return api(`/v1/games/${this.game}/runs/${this.run.run_id}/finish`, {
       token: this.token,
       body: { tick: this.tick },
     });

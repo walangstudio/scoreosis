@@ -3,7 +3,15 @@
 Date: 2026-10-13
 Project: Scoreosis
 Intended repository: walangstudio/scoreosis
-Status: Approved product direction and implementation plan. No Scoreosis application code has been created.
+Status: Implemented locally (not deployed, not pushed). Ah!Steroids and Sneak run verified ranked play end to end against `wrangler dev`. ebakuw8 is next (docs/INTEGRATION.md section 6).
+
+Gaps found while implementing, now covered:
+
+- Sneak's sim lives on the controller instance; a reused table leaked `next_obstacle_id` and desynced at tick 60. `sim.new_game` clears every saved field.
+- Sneak inputs are discrete actions, not held buttons: two per tick, `first + 10 * second`, `buttons = 7`.
+- Lag is measured from the Worker's arrival time with the baseline anchored at the first chunk; local dev latency counted as player lag otherwise.
+
+Still unverified: Durable Object CPU on the free plan, native ARM64/iOS parity, and a staging deploy. Free-tier capacity is about 25 player-hours per day at 1 s chunks.
 
 Build a reusable Cloudflare service for verified game leaderboards and achievements. Integrate Ah!Steroids first, then Sneak. Reuse BadgeTrip for achievements. This handoff is sufficient to continue without the originating conversation.
 

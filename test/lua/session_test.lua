@@ -196,6 +196,31 @@ test("a failed pause leaves the run local and still answers the caller", functio
 	eq(s.reason, "connection_lost")
 end)
 
+test("abandoning mid-pause or mid-resume still ends the run and stays local", function()
+	local f, s = started()
+	play(f, s, 1)
+	local answered
+	s:pause(function(ok) answered = ok end)
+	s:abandon()
+	eq(f.requests[#f.requests].url, "https://x/v1/games/toy/runs/r1/abandon")
+	f.answer(200, { status = "active" })
+	while #f.requests > 0 do f.answer(200, { status = "paused" }) end
+	eq(s.status, "local", "a late pause reply must not revive the run")
+	eq(answered, false)
+
+	f, s = started()
+	play(f, s, 1)
+	f.answer(200, { status = "active" })
+	s:pause(function() end)
+	f.answer(200, { status = "paused" })
+	s:resume(function(ok) answered = ok end)
+	s:abandon()
+	eq(f.requests[#f.requests].url, "https://x/v1/games/toy/runs/r1/abandon")
+	f.answer(200, { status = "active", expected_tick = 60 })
+	eq(s.status, "local", "a late resume reply must not revive the run")
+	eq(answered, false)
+end)
+
 test("catches up after a frame hitch instead of losing the time", function()
 	local f, s = started()
 	play(f, s, 1)

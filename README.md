@@ -9,7 +9,7 @@ Clients upload button inputs, not scores. The server replays them through the ga
 - Server-approved pauses.
 - Local and verified achievement progress, kept apart.
 
-Games: Ah!Steroids. Sneak is next.
+Games: Ah!Steroids, Sneak. ebakuw8 is next.
 
 ## Develop
 

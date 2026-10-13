@@ -59,10 +59,13 @@ describe('isolation', () => {
     const token = await guest();
     const res = await api('/v1/games/sneak/runs', {
       token,
-      body: { build_id: BUILD },
+      body: { build_id: 'sneak-web-direct-0.2.0' },
     });
-    expect(res.status).toBe(404);
-    expect(res.body.error.code).toBe('unknown_game');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('unauthorized');
+    expect((await api('/v1/games/nope/runs', { token, body: { build_id: BUILD } })).status).toBe(
+      404,
+    );
   });
 
   it('rejects unregistered builds for guests and runs', async () => {

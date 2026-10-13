@@ -61,3 +61,4 @@ Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> pl
 - Keep `useClock()`'s fake start far from the real date; workerd fires alarms on real time, and a near-now fake clock made alarm tests flaky.
 - Give long loop tests an explicit timeout; a timed-out loop keeps advancing the shared fake clock and breaks the tests after it.
 - Measure lag from the Worker's arrival time and anchor the baseline at the first chunk; local wrangler dev takes seconds per request and exposed every place server latency counted as player lag.
+- Before packing a game whose sim lives on a reused table (Sneak's controller), check `new` on a used table matches `new` on `{}`; Sneak desynced at tick 60 from a leftover `next_obstacle_id`.

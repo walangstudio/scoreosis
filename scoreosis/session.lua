@@ -167,6 +167,8 @@ function M:pause(callback)
 			return
 		end
 		self.client:call("POST", run_path(self, "pause"), { tick = self.tick }, function(ok, res)
+			-- Abandoned while waiting: the run is over, whatever the server says.
+			if self.status ~= "pausing" then return callback(false) end
 			if ok then
 				self.status = "paused"
 			else
@@ -186,6 +188,7 @@ function M:resume(callback)
 	end
 	self.status = "resuming"
 	self.client:call("POST", run_path(self, "resume"), {}, function(ok, res)
+		if self.status ~= "resuming" then return callback(false) end
 		-- The server's expected tick includes time lost to the pause round trips;
 		-- due() catches up to it a few ticks per frame.
 		self.base_time = self.now()
@@ -241,7 +244,8 @@ end
 
 -- Gives up the ranked run (menu exit, quit).
 function M:abandon()
-	if self.run and (self.status == "ranked" or self.status == "paused") then
+	local s = self.status
+	if self.run and (s == "ranked" or s == "pausing" or s == "paused" or s == "resuming") then
 		self.client:call("POST", run_path(self, "abandon"), {}, function() end, true)
 	end
 	go_local(self, "abandoned")

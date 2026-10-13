@@ -1,0 +1,23 @@
+{
+  "id": "sneak",
+  "name": "Sneak",
+  "source": "Y:/projs/walangstudio/sneak",
+  "entry": "script.ranked",
+  "boards": {
+    "classic": ["7411b66ea8266106"]
+  },
+  "builds": [
+    {
+      "id": "sneak-web-direct-0.2.0",
+      "ruleset": "7411b66ea8266106",
+      "runtime": "web",
+      "channel": "direct"
+    },
+    {
+      "id": "sneak-windows-direct-0.2.0",
+      "ruleset": "7411b66ea8266106",
+      "runtime": "windows",
+      "channel": "direct"
+    }
+  ]
+}

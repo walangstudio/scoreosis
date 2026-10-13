@@ -28,7 +28,12 @@ return M
 - `step` must be the only way time passes. Menus, tutorials and pauses live outside the module.
 - Input bits describe intents (left, right, fire), already normalized from keyboard, pad or touch.
 
-Ah!Steroids' `game/ranked.lua` is the reference.
+Two reference shapes:
+
+- Ah!Steroids `game/ranked.lua`: the sim is its own table, input bits are held buttons.
+- Sneak `script/ranked.lua`: inputs are discrete actions packed into the bits (`first + 10 * second`, `buttons = 7`). The controller instance is the sim; it applies each action when pressed and records it for the next tick, and its session adapter's `step` only advances time (`script/online.lua`).
+
+When the sim lives on a reused table, `new` must clear every saved field first. Sneak desynced at tick 60 because a counter from the previous run survived on the controller but not in the verifier's fresh `{}`.
 
 ## 2. Determinism rules
 
@@ -80,3 +85,7 @@ A ruleset is the hash of every packed module. Any change makes a new ruleset. Pu
 5. Pause: freeze, flush the partial chunk, `POST pause`. Resume: `POST resume`, then continue from the response.
 6. At the terminal tick, flush and `POST finish` until it leaves `verifying`.
 7. Any rejection or expiry: keep playing locally, label the run Local only, never resubmit it.
+
+## 6. Next: ebakuw8
+
+ebakuw8 already keeps stride, score and the spawner in seeded `modules/*`. Movement and collisions still live in `main/controller.script`; move them into a pure sim module, then follow sections 1-5. Prove parity with `tools/trace.mjs` against the engine before registering a build.
