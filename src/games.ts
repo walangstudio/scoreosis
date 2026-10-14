@@ -51,7 +51,7 @@ export type Game = {
   builds: Map<string, Build>;
   boards: Set<string>;
   defaultBoard: string;
-  /** Modes of the newest ruleset; empty when the game has none. */
+  /** Modes of every registered ruleset, the newest ruleset's first; empty when the game has none. */
   modes: string[];
   /** Achievements are defined by the newest ruleset; ids are stable across rulesets. */
   achievements: AchievementSpec[];
@@ -81,6 +81,10 @@ export function buildRegistry(configs: GameConfig[], bundles: RulesetBundle[]): 
       if (!isOneOf(RUNTIMES, b.runtime) || !isOneOf(CHANNELS, b.channel)) {
         throw new Error(`${config.id}/${b.id}: bad runtime or channel`);
       }
+      // Clients read their leaderboard platform from the id (scoreosis/client.lua).
+      if (!b.id.startsWith(`${config.id}-${b.runtime}-${b.channel}-`) || b.id.length > 64) {
+        throw new Error(`${config.id}/${b.id}: id must be <game>-<runtime>-<channel>-<version>`);
+      }
       if (ruleset.entry !== config.entry) throw new Error(`${config.id}: entry mismatch`);
       builds.set(b.id, {
         id: b.id,
@@ -100,7 +104,11 @@ export function buildRegistry(configs: GameConfig[], bundles: RulesetBundle[]): 
       builds,
       boards: new Set(Object.keys(config.boards)),
       defaultBoard: latestBoard,
-      modes: latest.modes ?? [],
+      modes: [
+        ...new Set(
+          [latest, ...[...builds.values()].map((b) => b.ruleset)].flatMap((r) => r.modes ?? []),
+        ),
+      ],
       achievements: latest.achievements,
     });
   }

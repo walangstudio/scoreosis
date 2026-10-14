@@ -4,11 +4,10 @@ import { registry } from '../src/games.js';
 import driver from '../src/vm/driver.lua';
 import { LuaVm } from '../src/vm/host.js';
 import wasm from '../src/vm/lua51.wasm';
-import { bundle } from './fixtures.js';
+import { BUILD, bundle } from './fixtures.js';
 
+export { BUILD };
 export const BASE = 'https://scoreosis.test';
-export { BUILD } from './fixtures.js';
-import { BUILD } from './fixtures.js';
 let requestCount = 0;
 
 export async function api(

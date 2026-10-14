@@ -76,6 +76,8 @@ Copies `scoreosis/*.lua` into the game. The packer refuses a stale copy.
 4. Check parity: `node tools/trace.mjs <bundle> <seed> 900 > a.txt` and `python tools/trace.py <bundle> <seed> 900 luajit > b.txt`, then compare.
 5. Deploy. Builds register on deploy; there is no runtime upload of verifier code.
 
+Build ids must be `<game>-<runtime>-<channel>-<version>`, matching the build's `runtime` and `channel`; the registry refuses anything else. The client library reads the leaderboard platform from the id.
+
 A ruleset is the hash of every packed module. Any change makes a new ruleset. Put it on the same board when the change keeps scores comparable, or on a new board to start fresh.
 
 ## 5. Client flow

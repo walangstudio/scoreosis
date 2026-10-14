@@ -234,7 +234,7 @@ execFileSync(
   process.execPath,
   [join(root, 'node_modules', '@biomejs', 'biome', 'bin', 'biome'), 'format', '--write', generated],
   {
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'inherit'],
   },
 );
 console.log(

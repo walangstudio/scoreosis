@@ -16,6 +16,8 @@ Scoreosis: verified multi-game leaderboards and achievements. Cloudflare Workers
 npx tsc --noEmit
 npx biome check .
 CI=true npx vitest run
+python tools/test-lua.py
+pnpm docs:build
 ```
 
 Parity check after touching `scoreosis/`, `driver.lua`, `vm/sv.c` or a game's ranked modules:
@@ -64,3 +66,5 @@ Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> pl
 - Before packing a game whose sim lives on a reused table (Sneak's controller), check `new` on a used table matches `new` on `{}`; Sneak desynced at tick 60 from a leftover `next_obstacle_id`.
 - Test browser timing with a delayed first chunk; a CORS preflight delays only the first POST to a run URL, and a 6-tick ahead slack rejected the next on-time chunk.
 - Size the VM's Wasm stack and initial memory explicitly in `tools/build-vm.mjs`; zig's 16 MiB default stack made every loaded verifier 17 MiB.
+- Anchor a pause at the later of the last input and the last resume (`resumed_at`); anchoring at the last input rejected a second pause after a resume and double-counted paused time.
+- A new column on an existing Durable Object table goes in `ADDED_COLUMNS` too; `CREATE TABLE IF NOT EXISTS` never adds it to objects created earlier.

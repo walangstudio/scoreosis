@@ -32,7 +32,7 @@ Set `MAX_RUNS_PER_DAY` from the measured rows written per run, leaving room for 
 2. Add a numbered file under `migrations/`; never edit an applied one.
 3. Apply to staging, run the suite against staging, then production.
 
-Durable Object SQLite schemas are created with `CREATE TABLE IF NOT EXISTS` in the object constructor; additive changes only.
+Durable Object SQLite tables are created with `CREATE TABLE IF NOT EXISTS` when a player registers, and checked again each time an object loads. Additive changes only: a new column on an existing table also goes in `ADDED_COLUMNS` in `src/session.ts`, which adds it to older objects.
 
 ## Adding a build or ruleset
 

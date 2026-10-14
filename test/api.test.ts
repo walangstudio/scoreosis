@@ -1,5 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { rulesets } from '../games/rulesets.generated.js';
+import { type GameConfig, buildRegistry } from '../src/games.js';
 import { BASE, Player, api } from './client.js';
 import { BUILD, RULESET } from './fixtures.js';
 
@@ -79,5 +81,56 @@ describe('public API', () => {
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('ruleset_disabled');
     await env.DB.prepare('DELETE FROM disabled_rulesets').run();
+  });
+});
+
+describe('game registry', () => {
+  const [ebakuw8] = rulesets.filter((r) => r.game === 'ebakuw8');
+  const config = (builds: GameConfig['builds'], boards: GameConfig['boards']): GameConfig => ({
+    id: 'ebakuw8',
+    name: 'ebakuw8',
+    entry: ebakuw8?.entry ?? '',
+    boards,
+    builds,
+  });
+
+  it('requires build ids to name their runtime and channel', () => {
+    const ruleset = ebakuw8?.ruleset ?? '';
+    const build = (id: string) => [{ id, ruleset, runtime: 'windows', channel: 'steam' }];
+    const boards = { stages: [ruleset] };
+    expect(() =>
+      buildRegistry([config(build('ebakuw8-windows-steam-1.0'), boards)], rulesets),
+    ).not.toThrow();
+    for (const id of [
+      'ebakuw8-beta-steam-1.0',
+      'ebakuw8-web-steam-1.0',
+      'other-windows-steam-1.0',
+    ]) {
+      expect(() => buildRegistry([config(build(id), boards)], rulesets)).toThrow(/id must be/);
+    }
+  });
+
+  it('keeps the modes of older registered rulesets readable', () => {
+    if (!ebakuw8) throw new Error('ebakuw8 ruleset missing');
+    const older = { ...ebakuw8, ruleset: 'older', modes: ['retired', 'train'] };
+    const game = buildRegistry(
+      [
+        config(
+          [
+            { id: 'ebakuw8-web-direct-0.1.0', ruleset: 'older', runtime: 'web', channel: 'direct' },
+            {
+              id: 'ebakuw8-web-direct-0.3.0',
+              ruleset: ebakuw8.ruleset,
+              runtime: 'web',
+              channel: 'direct',
+            },
+          ],
+          { old: ['older'], stages: [ebakuw8.ruleset] },
+        ),
+      ],
+      [...rulesets, older],
+    ).get('ebakuw8');
+    expect(game?.modes[0]).toBe(ebakuw8.modes?.[0]);
+    expect(game?.modes).toContain('retired');
   });
 });

@@ -87,7 +87,7 @@ Start the ranked simulation with `seed` (and `mode`) when this response arrives.
 - `from_tick` is the first tick in the chunk; it equals the previous chunk's end.
 - `inputs` is `count:bits` runs, one button bitmask per tick, bits below `2^buttons`.
 - `checksum` (optional, recommended) is `codec.checksum(codec.encode(game.save(sim)))` after the chunk's last tick.
-- `elapsed_ms` (first chunk only, recommended) is the client's wall time since it started ticking. The first chunk anchors the timing baseline, so a slow start response is not counted as lag. The anchor never precedes run creation and is at most 5 s after it.
+- `elapsed_ms` (first chunk only, recommended, 0 to 86400000) is the client's wall time since it started ticking. The first chunk anchors the timing baseline, so a slow start response is not counted as lag. The anchor never precedes run creation and is at most 5 s after it.
 - Send everything buffered as soon as the previous chunk is acknowledged and at least 60 ticks are waiting; a slow acknowledgment must not age the next chunk.
 - After the terminal tick, send nothing further.
 
@@ -101,7 +101,7 @@ Start the ranked simulation with `seed` (and `mode`) when this response arrives.
 
 ### `POST …/runs/:run/pause`
 
-Body `{ "tick" }`, the last tick sent. Freeze the game, flush all input, then send this within 2 s of the last chunk. The pause takes effect when that last chunk arrived, so the flush and pause round trips count as paused time.
+Body `{ "tick" }`, the last tick sent. Freeze the game, flush all input, then send this within 2 s of the last chunk (or of the last resume, if nothing was sent since; before the first chunk, within 7 s of the run start). The pause takes effect at that moment, so the flush and pause round trips count as paused time.
 
 ### `POST …/runs/:run/resume`
 
@@ -123,7 +123,7 @@ Ends the run as local only.
 
 ### `GET /v1/games/:game/leaderboards`
 
-Query: `board` (default the newest), `mode` (moded games: each mode ranks separately; default the first), `country` (ISO 3166-1 alpha-2), `runtime` (`web`, `windows`, `android`, `ios`, `macos`, `linux`), `channel` (`itch_io`, `google_play`, `steam`, `direct`, `unknown`), `page` (0-3), `me=1` (needs the token).
+Query: `board` (default the newest), `mode` (moded games: each mode ranks separately; default the newest ruleset's first; refused for a game without modes), `country` (ISO 3166-1 alpha-2), `runtime` (`web`, `windows`, `android`, `ios`, `macos`, `linux`), `channel` (`itch_io`, `google_play`, `steam`, `direct`, `unknown`), `page` (0-3), `me=1` (needs the token).
 
 ```json
 {

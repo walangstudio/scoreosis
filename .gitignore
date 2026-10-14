@@ -3,3 +3,5 @@ node_modules/
 vm/.cache/
 coverage/
 .dev.vars*
+docs/.vitepress/cache/
+docs/.vitepress/dist/

@@ -54,6 +54,7 @@ type RunRow = {
   baseline_tick: number;
   paused_at: number | null;
   paused_total_ms: number;
+  resumed_at: number | null;
   final_tick: number | null;
   score: number | null;
   facts: string | null;
@@ -76,7 +77,7 @@ CREATE TABLE IF NOT EXISTS runs (
   runtime TEXT NOT NULL, channel TEXT NOT NULL, country TEXT, seed INTEGER NOT NULL,
   status TEXT NOT NULL, reason TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
   baseline_ms INTEGER NOT NULL, baseline_tick INTEGER NOT NULL, paused_at INTEGER,
-  paused_total_ms INTEGER NOT NULL DEFAULT 0, final_tick INTEGER, score INTEGER, facts TEXT,
+  paused_total_ms INTEGER NOT NULL DEFAULT 0, resumed_at INTEGER, final_tick INTEGER, score INTEGER, facts TEXT,
   finalized_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS runs_status ON runs (status);
@@ -90,6 +91,22 @@ CREATE TABLE IF NOT EXISTS outbox (
   run_id TEXT PRIMARY KEY, payload TEXT NOT NULL, attempts INTEGER NOT NULL, next_attempt_at INTEGER NOT NULL
 );
 `;
+
+/** Columns added after their table first shipped; CREATE TABLE IF NOT EXISTS never adds them. */
+const ADDED_COLUMNS = [
+  ['runs', 'mode', 'TEXT'],
+  ['runs', 'resumed_at', 'INTEGER'],
+] as const;
+
+export function migrate(sql: SqlStorage): void {
+  sql.exec(SCHEMA);
+  for (const [table, column, type] of ADDED_COLUMNS) {
+    const present = sql
+      .exec('SELECT 1 FROM pragma_table_info(?) WHERE name = ?', table, column)
+      .toArray().length;
+    if (!present) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
 
 export type InputChunk = {
   seq: number;
@@ -148,6 +165,7 @@ export class PlayerSession extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    if (this.registered()) migrate(this.sql);
   }
 
   // --- identity -----------------------------------------------------------
@@ -327,18 +345,21 @@ export class PlayerSession extends DurableObject<Env> {
       const { ticks, nextSeq } = this.received(runId);
       if (tick !== ticks)
         throw new ApiError('sequence_conflict', `flush input up to tick ${tick} first`);
-      // The pause takes effect when the last input arrived; the flush and pause
-      // round trips after the client froze count as paused time. The lag that
-      // input showed (already within the window) carries past the pause.
-      const lastInput =
-        this.sql
-          .exec<{ at: number | null }>(
-            'SELECT max(received_at) AS at FROM inputs WHERE run_id = ?',
-            runId,
-          )
-          .one().at ?? run.baseline_ms;
-      const pausedAt = Math.max(lastInput, run.baseline_ms);
-      if (now - pausedAt > PAUSE_GRACE_MS) {
+      // The pause takes effect when the last input arrived, or at the last resume
+      // if no input came since; the flush and pause round trips after the client
+      // froze count as paused time. The lag that input showed (already within
+      // the window) carries past the pause. Before any input or resume the
+      // start-up allowance applies, as it does to the first chunk.
+      const lastInput = this.sql
+        .exec<{ at: number | null }>(
+          'SELECT max(received_at) AS at FROM inputs WHERE run_id = ?',
+          runId,
+        )
+        .one().at;
+      const lastActive = Math.max(lastInput ?? 0, run.resumed_at ?? 0);
+      const pausedAt = lastActive || run.baseline_ms;
+      const grace = lastActive ? PAUSE_GRACE_MS : START_GRACE_MS + PAUSE_GRACE_MS;
+      if (now - pausedAt > grace) {
         this.reject(run, 'timing', now);
         throw new ApiError('timing_rejected', 'pause arrived too long after the last input');
       }
@@ -368,9 +389,10 @@ export class PlayerSession extends DurableObject<Env> {
       const paused = now - run.paused_at;
       const baseline = run.baseline_ms + paused;
       this.sql.exec(
-        "UPDATE runs SET status = 'active', paused_at = NULL, paused_total_ms = ?, baseline_ms = ? WHERE id = ?",
+        "UPDATE runs SET status = 'active', paused_at = NULL, paused_total_ms = ?, baseline_ms = ?, resumed_at = ? WHERE id = ?",
         run.paused_total_ms + paused,
         baseline,
+        now,
         runId,
       );
       await this.scheduleAlarm();

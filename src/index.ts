@@ -137,18 +137,19 @@ route(
     const board = q.get('board') ?? game.defaultBoard;
     if (!game.boards.has(board)) throw new ApiError('bad_request', 'unknown board');
     // A moded game ranks each mode separately; the first mode is the default.
-    const mode = game.modes.length ? (q.get('mode') ?? game.modes[0] ?? null) : null;
+    const mode = q.get('mode') ?? game.modes[0] ?? null;
     if (mode !== null && !game.modes.includes(mode))
-      throw new ApiError('bad_request', 'unknown mode');
+      throw new ApiError(
+        'bad_request',
+        game.modes.length ? 'unknown mode' : 'this game has no modes',
+      );
     // country=auto is the caller's own country; such responses vary per caller.
     const auto = q.get('country') === 'auto';
     const visibility = auto ? 'private' : 'public';
     const filter: BoardFilter = {
       game: game.id,
       board: boardKey(board, mode),
-      country: auto
-        ? normalizeCountry((request.cf as { country?: string } | undefined)?.country)
-        : optionalParam(q, 'country', /^[A-Z]{2}$/),
+      country: auto ? callerCountry(request) : optionalParam(q, 'country', /^[A-Z]{2}$/),
       runtime: optionalParam(q, 'runtime', new RegExp(`^(${RUNTIMES.join('|')})$`)),
       channel: optionalParam(q, 'channel', new RegExp(`^(${CHANNELS.join('|')})$`)),
     };
@@ -229,7 +230,7 @@ route('POST', /^\/v1\/games\/([a-z0-9_]+)\/runs$/, async ({ request, env }, [gam
     );
   // Throttling, the disabled-ruleset check and admission run in the player's
   // object after the credential check, so forged tokens cannot spend capacity.
-  const country = normalizeCountry((request.cf as { country?: string } | undefined)?.country);
+  const country = callerCountry(request);
   return reply(
     await auth.session.startRun(auth.secretHash, build.id, country, mode),
     (r) => r.run,
@@ -251,7 +252,8 @@ route(
     };
     const checksum = optionalInt(body, 'checksum', 0, 2147483646);
     if (checksum !== undefined) chunk.checksum = checksum;
-    const elapsedMs = optionalInt(body, 'elapsed_ms', 0, 60_000);
+    // Any start-up stall is accepted here; the baseline clamps it to START_GRACE_MS.
+    const elapsedMs = optionalInt(body, 'elapsed_ms', 0, 86_400_000);
     if (elapsedMs !== undefined) chunk.elapsedMs = elapsedMs;
     return reply(
       await auth.session.submitInputs(auth.secretHash, runIdOf(runId), chunk, receivedAt),
@@ -475,7 +477,8 @@ function runIdOf(id: string): string {
   return id;
 }
 
-function normalizeCountry(code: string | undefined): string | null {
+function callerCountry(request: Request): string | null {
+  const code = (request.cf as { country?: string } | undefined)?.country;
   // XX = unknown, T1 = Tor; neither is a country.
   return code && /^[A-Z]{2}$/.test(code) && code !== 'XX' && code !== 'T1' ? code : null;
 }

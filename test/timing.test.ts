@@ -218,6 +218,31 @@ describe('timing', () => {
     expect((await player.send(player.play())).status).toBe(200);
   });
 
+  it('allows a second pause right after a resume with no input between', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(1000);
+    await player.send(player.play());
+    expect((await pause(player)).status).toBe(200);
+    clock.advance(30_000);
+    expect((await resume(player)).status).toBe(200);
+    clock.advance(500);
+    expect((await pause(player)).status).toBe(200);
+    clock.advance(10_000);
+    const resumed = await resume(player);
+    // The second pause starts at the resume; the first pause is not counted twice.
+    expect(resumed.body.expected_tick).toBe(60);
+  });
+
+  it('allows a pause before the first chunk within the start-up allowance', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(3000);
+    expect((await pause(player)).status).toBe(200);
+  });
+
   it('rejects a pause sent long after the last input', async () => {
     const clock = useClock();
     const player = await Player.create();

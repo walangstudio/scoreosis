@@ -20,6 +20,18 @@ afterEach(() => {
 const specs = registry.get('ahsteroids')?.achievements ?? [];
 
 describe('recovery', () => {
+  it('adds columns that shipped after an object first created its tables', async () => {
+    const player = await Player.create();
+    const stub = stubFor(player.token);
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec('ALTER TABLE runs DROP COLUMN mode');
+      state.storage.sql.exec('ALTER TABLE runs DROP COLUMN resumed_at');
+    });
+    await evictDurableObject(stub);
+    await player.start();
+    expect(player.run?.run_id).toBeTruthy();
+  });
+
   it('restores the verifier from a checkpoint after eviction with an identical result', async () => {
     const clock = useClock();
     const a = await Player.create(12345);

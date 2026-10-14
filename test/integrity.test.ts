@@ -82,6 +82,7 @@ describe('isolation', () => {
     });
     expect(plain.status).toBe(400);
     expect((await api('/v1/games/ebakuw8/leaderboards?mode=mars')).status).toBe(400);
+    expect((await api('/v1/games/ahsteroids/leaderboards?mode=train')).status).toBe(400);
   });
 
   it('rejects unregistered builds for guests and runs', async () => {
