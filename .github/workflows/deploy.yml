@@ -1,0 +1,52 @@
+name: Deploy
+
+# Staging deploys on every push to main, production on a release tag or by hand.
+# Inactive until the repository variable CLOUDFLARE_ACCOUNT_ID and the secret
+# CLOUDFLARE_API_TOKEN are set; see docs/guide/cloudflare.md.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        options: [staging, production]
+        default: staging
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.CLOUDFLARE_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
+    env:
+      TARGET: ${{ github.event.inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: python -m pip install lupa
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: python tools/test-lua.py
+      - name: Apply D1 migrations
+        run: pnpm exec wrangler d1 migrations apply "scoreosis-$TARGET" --remote --env "$TARGET"
+      - name: Deploy the Worker
+        run: pnpm exec wrangler deploy --env "$TARGET"

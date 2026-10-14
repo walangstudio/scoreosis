@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+vm/.cache/
+coverage/
+.dev.vars*
+docs/.vitepress/cache/
+docs/.vitepress/dist/
