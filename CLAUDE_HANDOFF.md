@@ -20,7 +20,7 @@ Build a reusable Cloudflare service for verified game leaderboards and achieveme
 ## Confirmed requirements
 
 - Support multiple games from the first release. Isolate each game's identities, sessions, rulesets, results, and achievements.
-- Provide device-local, world, and country leaderboards. Treat country as the first regional grouping.
+- Provide local, global, and country leaderboards. Treat country as the first regional grouping.
 - Support independent runtime platform and distribution channel filters, including their combinations.
 - Start with guest identities per game installation. Defer account linking, cross-device recovery, friend groups, and continent boards.
 - Require online verified gameplay for competitive results. Offline scores and achievements remain local.
@@ -98,7 +98,7 @@ Document request and response schemas, limits, stable error codes, and retry beh
 
 ## Leaderboards and platform grouping
 
-- Provide Local, World, and Country views for each game.
+- Provide Local, Global, and Country views for each game.
 - Online boards rank all-time personal-best scores within a compatible ruleset.
 - Runtime and distribution filters are independent and optional. Default to all runtimes and channels.
 - Support country plus runtime plus channel together. Do not collapse runtime and store into a single platform field.
@@ -106,7 +106,7 @@ Document request and response schemas, limits, stable error codes, and retry beh
 - Keep different games and incompatible rulesets out of the same competitive board.
 - Return the top 100 in pages of 25, plus the player's rank. Equal scores share rank; server acceptance time and a stable ID determine display order among ties.
 - Cache public ranking responses for 30 seconds. Include every active filter and ruleset in the cache key. Keep private player data out of shared caches.
-- Obtain country from Cloudflare request metadata at run creation. Unknown country participates in World only. A VPN can change apparent country; do not describe it as verified residence.
+- Obtain country from Cloudflare request metadata at run creation. Unknown country participates in Global only. A VPN can change apparent country; do not describe it as verified residence.
 - Keep existing local records and settings. Add a local top-10 history to Ah!Steroids; retain Sneak's top 10. Old records and offline runs cannot be promoted into verified rankings.
 
 Guests are per installation and game for v1. Explain that clearing application data or reinstalling can lose online identity. Do not imply cross-game or cross-device identity is already supported.

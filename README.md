@@ -4,7 +4,7 @@ Verified leaderboards and achievements for walangstudio games, on Cloudflare Wor
 
 Clients upload button inputs, not scores. The server replays them through the game's own Lua simulation, compiled into a sandboxed Lua 5.1 Wasm VM, and ranks only what it verified. Achievements run on [BadgeTrip](https://github.com/walangstudio/badgetrip).
 
-- World, country, runtime and store leaderboards, filterable together.
+- Global and country leaderboards per platform; the API also filters by store.
 - Guest identity per game installation.
 - Server-approved pauses.
 - Local and verified achievement progress, kept apart.

@@ -87,7 +87,7 @@ A ruleset is the hash of every packed module. Any change makes a new ruleset. Pu
 5. Pause: freeze, flush the partial chunk, `POST pause`. Resume: `POST resume`, then continue from the response.
 6. At the terminal tick, flush and `POST finish` until it leaves `verifying`.
 7. Any rejection or expiry: keep playing locally, label the run Local only, never resubmit it.
-8. Leaderboards never mix platforms. `client:leaderboard` defaults `runtime` to the build's own; a device filter cycles platforms with no "all" entry and starts on this one.
+8. Leaderboards never mix platforms. `client:leaderboard` defaults `runtime` to the build's own. Games show only that platform: no device or store filter. Name the screen LEADERBOARD with GLOBAL, COUNTRY, LOCAL TOP 10 and ACHIEVEMENTS.
 
 ## 6. Modes
 
