@@ -55,7 +55,7 @@ Network failures and 5xx on `inputs` are retried with the identical body: the se
 
 ### `GET /v1/games/:game`
 
-Game name, boards, runtime and channel values, and the public achievement catalog.
+Game name, boards, modes (empty for a game without them), runtime and channel values, and the public achievement catalog.
 
 ### `POST /v1/guests`
 
@@ -65,7 +65,7 @@ Body `{ "game_id": "ahsteroids", "build_id": "ahsteroids-web-itch-0.2.0" }`.
 
 ### `POST /v1/games/:game/runs`
 
-Body `{ "build_id" }`. `201`:
+Body `{ "build_id", "mode" }`. `mode` is required for a game with modes (one of its `modes`, such as an ebakuw8 stage) and refused otherwise. `201`:
 
 ```json
 {
@@ -75,7 +75,7 @@ Body `{ "build_id" }`. `201`:
 }
 ```
 
-Start the ranked simulation with `seed` when this response arrives. Tick 0 is the baseline.
+Start the ranked simulation with `seed` (and `mode`) when this response arrives. Tick 0 is the baseline; a moded response also echoes `mode`.
 
 ### `POST /v1/games/:game/runs/:run/inputs`
 
@@ -123,7 +123,7 @@ Ends the run as local only.
 
 ### `GET /v1/games/:game/leaderboards`
 
-Query: `board` (default the newest), `country` (ISO 3166-1 alpha-2), `runtime` (`web`, `windows`, `android`, `ios`, `macos`, `linux`), `channel` (`itch_io`, `google_play`, `steam`, `direct`, `unknown`), `page` (0-3), `me=1` (needs the token).
+Query: `board` (default the newest), `mode` (moded games: each mode ranks separately; default the first), `country` (ISO 3166-1 alpha-2), `runtime` (`web`, `windows`, `android`, `ios`, `macos`, `linux`), `channel` (`itch_io`, `google_play`, `steam`, `direct`, `unknown`), `page` (0-3), `me=1` (needs the token).
 
 ```json
 {
@@ -135,7 +135,7 @@ Query: `board` (default the newest), `country` (ISO 3166-1 alpha-2), `runtime` (
 }
 ```
 
-Each player appears once with their best score inside the filter. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the player has no result in the filter.
+Each player appears once with their best score inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the player has no result in the filter.
 
 ### `GET /v1/games/:game/me/achievements`
 

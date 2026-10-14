@@ -185,6 +185,26 @@ test("finishes after the chunk in flight lands and polls while verifying", funct
 	eq(result.result.score, 90)
 end)
 
+test("leaderboards default to the build's own runtime", function()
+	local f = fake()
+	local c = client_mod.new(f.platform, "https://x", "toy", "toy-android-google_play-1.0.0")
+	c:leaderboard({ mode = "office" }, function() end)
+	eq(f.requests[1].url, "https://x/v1/games/toy/leaderboards?mode=office&runtime=android")
+	c:leaderboard({ runtime = "web" }, function() end)
+	eq(f.requests[2].url, "https://x/v1/games/toy/leaderboards?runtime=web")
+	client_mod.new(f.platform, "https://x", "toy", "toy-dev"):leaderboard({}, function() end)
+	eq(f.requests[3].url, "https://x/v1/games/toy/leaderboards", "an id without a runtime segment")
+end)
+
+test("the final checksum is the finishing state even if the game keeps animating it", function()
+	local f, s = started(90)
+	play(f, s, 2)
+	eq(s.status, "finishing")
+	s.sim.score = 999
+	f.answer(200, { status = "active" })
+	eq(f.requests[1].body.checksum, codec.checksum(codec.encode({ seed = 9, tick = 90, score = 90 })))
+end)
+
 test("a failed pause leaves the run local and still answers the caller", function()
 	local f, s = started()
 	play(f, s, 1)
@@ -194,6 +214,23 @@ test("a failed pause leaves the run local and still answers the caller", functio
 	eq(answered, false)
 	eq(s.status, "local")
 	eq(s.reason, "connection_lost")
+end)
+
+test("a moded run asks for its mode and builds the sim in it", function()
+	local f = fake()
+	f.token = "tok"
+	local game = toy(600)
+	local new = game.new
+	game.new = function(seed, mode)
+		local sim = new(seed)
+		sim.mode = mode
+		return sim
+	end
+	local s = session_mod.new(client_mod.new(f.platform, "https://x", "toy", "toy-dev"), game, f.now, "office")
+	s:start(function() end)
+	local run = f.answer(201, { run_id = "r1", seed = 9 })
+	eq(run.body.mode, "office")
+	eq(s.sim.mode, "office")
 end)
 
 test("abandoning mid-pause or mid-resume still ends the run and stays local", function()

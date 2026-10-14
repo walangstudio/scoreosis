@@ -44,6 +44,35 @@ describe('verified ranked run', () => {
     });
   });
 
+  it('verifies an ebakuw8 stage run on that stage board only', async () => {
+    const clock = useClock();
+    const player = await Player.create(4242, undefined, 'ebakuw8');
+    const start = await player.start('ebakuw8-web-direct-0.3.0', 'diner');
+    expect(start.status).toBe(201);
+    expect(start.body).toMatchObject({ board: 'stages', mode: 'diner' });
+
+    const result = await player.playToEnd(clock);
+    expect(result.body.status).toBe('finished');
+    const score = Number(
+      player.vm
+        .call('sv_facts')
+        .split('\n')
+        .find((l) => l.startsWith('score='))
+        ?.split('=')[1],
+    );
+    expect(result.body.score).toBe(score);
+
+    const board = (mode: string) =>
+      api(`/v1/games/ebakuw8/leaderboards?mode=${mode}&runtime=web&me=1`, { token: player.token });
+    const diner = await board('diner');
+    expect(diner.body).toMatchObject({ board: 'stages', mode: 'diner', me: { rank: 1, score } });
+    const train = await board('train');
+    expect(train.body.entries).toEqual([]);
+    expect(train.body.me).toBeNull();
+    const windows = await api('/v1/games/ebakuw8/leaderboards?mode=diner&runtime=windows');
+    expect(windows.body.entries).toEqual([]);
+  }, 120_000);
+
   it('verifies a Sneak run on its own board and achievements', async () => {
     const clock = useClock();
     const player = await Player.create(777, undefined, 'sneak');

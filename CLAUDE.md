@@ -62,3 +62,5 @@ Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> pl
 - Give long loop tests an explicit timeout; a timed-out loop keeps advancing the shared fake clock and breaks the tests after it.
 - Measure lag from the Worker's arrival time and anchor the baseline at the first chunk; local wrangler dev takes seconds per request and exposed every place server latency counted as player lag.
 - Before packing a game whose sim lives on a reused table (Sneak's controller), check `new` on a used table matches `new` on `{}`; Sneak desynced at tick 60 from a leftover `next_obstacle_id`.
+- Test browser timing with a delayed first chunk; a CORS preflight delays only the first POST to a run URL, and a 6-tick ahead slack rejected the next on-time chunk.
+- Size the VM's Wasm stack and initial memory explicitly in `tools/build-vm.mjs`; zig's 16 MiB default stack made every loaded verifier 17 MiB.

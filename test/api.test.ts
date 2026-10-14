@@ -7,9 +7,15 @@ const ADMIN = { authorization: 'Bearer test-admin-token-0123456789abcdef01234567
 
 describe('public API', () => {
   it('reports health and game metadata', async () => {
-    expect((await api('/v1/health')).body).toEqual({ ok: true, games: ['ahsteroids', 'sneak'] });
+    expect((await api('/v1/health')).body).toEqual({
+      ok: true,
+      games: ['ahsteroids', 'ebakuw8', 'sneak'],
+    });
     const game = await api('/v1/games/ahsteroids');
-    expect(game.body).toMatchObject({ id: 'ahsteroids', boards: ['classic'] });
+    expect(game.body).toMatchObject({ id: 'ahsteroids', boards: ['classic'], modes: [] });
+    const ebakuw8 = await api('/v1/games/ebakuw8');
+    expect(ebakuw8.body.modes).toHaveLength(12);
+    expect(ebakuw8.body.modes.slice(0, 2)).toEqual(['train', 'diner']);
     expect(game.body.achievements).toHaveLength(12);
     const sneak = await api('/v1/games/sneak');
     expect(sneak.body).toMatchObject({ id: 'sneak', boards: ['classic'] });

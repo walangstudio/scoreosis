@@ -1,5 +1,5 @@
 import { ApiError, type ErrorCode, type Failure, STATUS } from './errors.js';
-import { CHANNELS, type Game, RUNTIMES, registry } from './games.js';
+import { CHANNELS, type Game, RUNTIMES, boardKey, registry } from './games.js';
 import {
   type BoardFilter,
   MAX_RANK,
@@ -89,6 +89,7 @@ route('GET', /^\/v1\/games\/([a-z0-9_]+)$/, async (_ctx, [gameId = '']) => {
     id: game.id,
     name: game.name,
     boards: [...game.boards],
+    modes: game.modes,
     runtimes: RUNTIMES,
     channels: CHANNELS,
     achievements: game.achievements.map((a) => ({
@@ -135,12 +136,16 @@ route(
     const q = url.searchParams;
     const board = q.get('board') ?? game.defaultBoard;
     if (!game.boards.has(board)) throw new ApiError('bad_request', 'unknown board');
+    // A moded game ranks each mode separately; the first mode is the default.
+    const mode = game.modes.length ? (q.get('mode') ?? game.modes[0] ?? null) : null;
+    if (mode !== null && !game.modes.includes(mode))
+      throw new ApiError('bad_request', 'unknown mode');
     // country=auto is the caller's own country; such responses vary per caller.
     const auto = q.get('country') === 'auto';
     const visibility = auto ? 'private' : 'public';
     const filter: BoardFilter = {
       game: game.id,
-      board,
+      board: boardKey(board, mode),
       country: auto
         ? normalizeCountry((request.cf as { country?: string } | undefined)?.country)
         : optionalParam(q, 'country', /^[A-Z]{2}$/),
@@ -154,6 +159,7 @@ route(
     const cacheKey = new Request(
       `${url.origin}/v1/games/${game.id}/leaderboards?${new URLSearchParams({
         board,
+        mode: mode ?? '',
         country: filter.country ?? (auto ? 'unknown' : ''),
         runtime: filter.runtime ?? '',
         channel: filter.channel ?? '',
@@ -168,6 +174,7 @@ route(
       body = {
         game: game.id,
         board,
+        mode,
         filters: { country: filter.country, runtime: filter.runtime, channel: filter.channel },
         page,
         page_size: PAGE_SIZE,
@@ -213,10 +220,21 @@ route('POST', /^\/v1\/games\/([a-z0-9_]+)\/runs$/, async ({ request, env }, [gam
   const build = game.builds.get(str(body, 'build_id', BUILD_ID));
   if (!build)
     throw new ApiError('unsupported_build', 'this build is not registered for ranked play');
+  const modes = build.ruleset.modes ?? [];
+  const mode = body.mode === undefined ? null : str(body, 'mode', /^[a-z0-9_]{1,32}$/);
+  if (modes.length ? mode === null || !modes.includes(mode) : mode !== null)
+    throw new ApiError(
+      'bad_request',
+      modes.length ? 'mode is not one of this build modes' : 'this game has no modes',
+    );
   // Throttling, the disabled-ruleset check and admission run in the player's
   // object after the credential check, so forged tokens cannot spend capacity.
   const country = normalizeCountry((request.cf as { country?: string } | undefined)?.country);
-  return reply(await auth.session.startRun(auth.secretHash, build.id, country), (r) => r.run, 201);
+  return reply(
+    await auth.session.startRun(auth.secretHash, build.id, country, mode),
+    (r) => r.run,
+    201,
+  );
 });
 
 route(

@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { achievementEngine, recordVerifiedRun } from './achievements.js';
 import { sqliteStores } from './badgetrip-sqlite.js';
 import { ApiError, type Failure, fail } from './errors.js';
-import { type Build, type Game, registry } from './games.js';
+import { type Build, type Game, boardKey, registry } from './games.js';
 import { type PublishedResult, publishResult } from './leaderboard.js';
 import { log } from './log.js';
 import { type InputRun, formatInputs, parseInputs, skipTicks, tickCount } from './validate.js';
@@ -41,6 +41,7 @@ type RunRow = {
   build: string;
   ruleset: string;
   board: string;
+  mode: string | null;
   runtime: string;
   channel: string;
   country: string | null;
@@ -71,7 +72,7 @@ type InputRow = {
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS runs (
-  id TEXT PRIMARY KEY, build TEXT NOT NULL, ruleset TEXT NOT NULL, board TEXT NOT NULL,
+  id TEXT PRIMARY KEY, build TEXT NOT NULL, ruleset TEXT NOT NULL, board TEXT NOT NULL, mode TEXT,
   runtime TEXT NOT NULL, channel TEXT NOT NULL, country TEXT, seed INTEGER NOT NULL,
   status TEXT NOT NULL, reason TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
   baseline_ms INTEGER NOT NULL, baseline_tick INTEGER NOT NULL, paused_at INTEGER,
@@ -104,6 +105,7 @@ export type StartResult = {
   seed: number;
   ruleset: string;
   board: string;
+  mode: string | null;
   tick_rate: number;
   chunk_max_ticks: number;
   window_ticks: number;
@@ -180,6 +182,7 @@ export class PlayerSession extends DurableObject<Env> {
     secretHash: string,
     buildId: string,
     country: string | null,
+    mode: string | null,
   ): Promise<{ ok: true; run: StartResult } | Failure> {
     return this.guard(secretHash, async () => {
       const build = this.build(buildId);
@@ -203,12 +206,13 @@ export class PlayerSession extends DurableObject<Env> {
       const seed = (random % 2147483646) + 1;
       const expiresAt = now + RUN_EXPIRY_MS;
       this.sql.exec(
-        `INSERT INTO runs (id, build, ruleset, board, runtime, channel, country, seed, status, created_at,
-          expires_at, baseline_ms, baseline_tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0)`,
+        `INSERT INTO runs (id, build, ruleset, board, mode, runtime, channel, country, seed, status, created_at,
+          expires_at, baseline_ms, baseline_tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0)`,
         runId,
         build.id,
         build.ruleset.ruleset,
-        build.board,
+        boardKey(build.board, mode),
+        mode,
         build.runtime,
         build.channel,
         country,
@@ -229,6 +233,7 @@ export class PlayerSession extends DurableObject<Env> {
           seed,
           ruleset: build.ruleset.ruleset,
           board: build.board,
+          mode,
           tick_rate: TICK_RATE,
           chunk_max_ticks: CHUNK_MAX_TICKS,
           window_ticks: WINDOW_TICKS,
@@ -285,6 +290,7 @@ export class PlayerSession extends DurableObject<Env> {
       if (chunk.seq === 0) {
         this.anchorBaseline(run, chunk.elapsedMs ?? (endTick * 1000) / TICK_RATE, now);
       }
+      this.reanchorEarlier(run, endTick, now);
       const timing = this.checkTiming(run, endTick, now);
       if (timing) {
         this.reject(run, 'timing', now);
@@ -527,7 +533,7 @@ export class PlayerSession extends DurableObject<Env> {
       .toArray()[0];
     const status = checkpoint
       ? vm.call('sv_load', `${build.ruleset.entry}|${checkpoint.data}`)
-      : vm.call('sv_start', `${build.ruleset.entry}|${run.seed}`);
+      : vm.call('sv_start', `${build.ruleset.entry}|${run.seed}${run.mode ? `|${run.mode}` : ''}`);
     const [tick, finished] = status.split('|');
     this.loaded = {
       runId: run.id,
@@ -767,6 +773,21 @@ export class PlayerSession extends DurableObject<Env> {
   private anchorBaseline(run: RunRow, elapsedMs: number, now: number): void {
     const anchored = now - elapsedMs;
     const baseline = Math.min(run.created_at + START_GRACE_MS, Math.max(run.created_at, anchored));
+    this.sql.exec('UPDATE runs SET baseline_ms = ? WHERE id = ?', baseline, run.id);
+    run.baseline_ms = baseline;
+  }
+
+  /**
+   * A first chunk delayed in transit (a browser's CORS preflight) anchors the
+   * baseline late, and then on-time chunks look ahead. A chunk may move the
+   * baseline earlier to fit its ticks, never before creation plus every paused
+   * millisecond: play still cannot outrun the unpaused time since the run began.
+   */
+  private reanchorEarlier(run: RunRow, endTick: number, now: number): void {
+    const fits = now - ((endTick - FUTURE_SLACK_TICKS) * 1000) / TICK_RATE;
+    const floor = run.created_at + run.paused_total_ms;
+    const baseline = Math.min(run.baseline_ms, Math.max(floor, fits));
+    if (baseline === run.baseline_ms) return;
     this.sql.exec('UPDATE runs SET baseline_ms = ? WHERE id = ?', baseline, run.id);
     run.baseline_ms = baseline;
   }

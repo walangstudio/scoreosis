@@ -84,10 +84,10 @@ export class Player {
     return new Player(token ?? (await guest(game, defaultBuild(game))), inputSeed, game);
   }
 
-  async start(build = defaultBuild(this.game)) {
+  async start(build = defaultBuild(this.game), mode?: string) {
     const res = await api(`/v1/games/${this.game}/runs`, {
       token: this.token,
-      body: { build_id: build },
+      body: { build_id: build, mode },
     });
     if (res.status !== 201) return res;
     this.run = res.body;
@@ -100,7 +100,7 @@ export class Player {
       modules: ruleset.modules,
       limits: { memory: 32 << 20, instructions: 1e9 },
     });
-    this.vm.call('sv_start', `${ruleset.entry}|${this.run.seed}`);
+    this.vm.call('sv_start', `${ruleset.entry}|${this.run.seed}${mode ? `|${mode}` : ''}`);
     this.seq = 0;
     this.tick = 0;
     this.finished = false;

@@ -54,7 +54,7 @@ describe('recovery', () => {
         .map(([k, v]) => [k, Number(v)]),
     );
     expect(res.body.facts).toEqual(clientFacts);
-  });
+  }, 60_000);
 
   it('finalizes once under concurrent finish requests', async () => {
     const clock = useClock();

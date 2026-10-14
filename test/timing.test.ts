@@ -51,6 +51,44 @@ describe('timing', () => {
     expect((await player.send(player.play())).status).toBe(200);
   });
 
+  it('does not reject the next chunk when the first was delayed in transit', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(1000);
+    clock.advance(300); // a browser's first POST to the run waits on a CORS preflight
+    expect((await player.send({ ...player.play(), elapsed_ms: 1000 })).status).toBe(200);
+    clock.advance(750); // the second chunk, sent at 2.0 s of play, needs no preflight
+    expect((await player.send(player.play())).status).toBe(200);
+  });
+
+  it('rejects input ahead of the time since the run began', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(1000);
+    expect((await player.send(player.play())).status).toBe(200);
+    const res = await player.send(player.play(120));
+    expect(res.status).toBe(422);
+    expect(res.body.error.message).toBe('input is ahead of real time');
+  });
+
+  it('does not turn paused time into lead', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(1000);
+    expect((await player.send(player.play())).status).toBe(200);
+    expect((await pause(player)).status).toBe(200);
+    clock.advance(4 * 60_000);
+    expect((await resume(player)).status).toBe(200);
+    clock.advance(1000);
+    expect((await player.send(player.play())).status).toBe(200);
+    const res = await player.send(player.play(120));
+    expect(res.status).toBe(422);
+    expect(res.body.error.message).toBe('input is ahead of real time');
+  });
+
   it('survives a start response slower than the loss window', async () => {
     const clock = useClock();
     const player = await Player.create();

@@ -2,8 +2,14 @@
 import type { GameConfig, RulesetBundle } from '../src/games.js';
 import game_ahsteroids from './ahsteroids/game.json';
 import ahsteroids_96cf239671ce4856 from './ahsteroids/rulesets/96cf239671ce4856.json';
+import game_ebakuw8 from './ebakuw8/game.json';
+import ebakuw8_999b093787c960ca from './ebakuw8/rulesets/999b093787c960ca.json';
 import game_sneak from './sneak/game.json';
 import sneak_7411b66ea8266106 from './sneak/rulesets/7411b66ea8266106.json';
 
-export const games: GameConfig[] = [game_ahsteroids, game_sneak];
-export const rulesets: RulesetBundle[] = [ahsteroids_96cf239671ce4856, sneak_7411b66ea8266106];
+export const games: GameConfig[] = [game_ahsteroids, game_ebakuw8, game_sneak];
+export const rulesets: RulesetBundle[] = [
+  ahsteroids_96cf239671ce4856,
+  ebakuw8_999b093787c960ca,
+  sneak_7411b66ea8266106,
+];

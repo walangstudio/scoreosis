@@ -68,6 +68,22 @@ describe('isolation', () => {
     );
   });
 
+  it('requires a known mode for moded games and refuses one elsewhere', async () => {
+    const build = 'ebakuw8-web-direct-0.3.0';
+    const token = await guest('ebakuw8', build);
+    for (const body of [{ build_id: build }, { build_id: build, mode: 'mars' }]) {
+      const res = await api('/v1/games/ebakuw8/runs', { token, body });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('bad_request');
+    }
+    const plain = await api('/v1/games/ahsteroids/runs', {
+      token: await guest(),
+      body: { build_id: BUILD, mode: 'train' },
+    });
+    expect(plain.status).toBe(400);
+    expect((await api('/v1/games/ebakuw8/leaderboards?mode=mars')).status).toBe(400);
+  });
+
   it('rejects unregistered builds for guests and runs', async () => {
     const res = await api('/v1/guests', {
       body: { game_id: 'ahsteroids', build_id: 'ahsteroids-cracked' },

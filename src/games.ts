@@ -20,6 +20,8 @@ export type RulesetBundle = {
   ruleset: string;
   entry: string;
   buttons: number;
+  /** Optional: one leaderboard per mode (a level, a track), chosen at run start. */
+  modes?: string[];
   source: { commit: string; dirty: boolean };
   achievements: AchievementSpec[];
   modules: Record<string, string>;
@@ -49,6 +51,8 @@ export type Game = {
   builds: Map<string, Build>;
   boards: Set<string>;
   defaultBoard: string;
+  /** Modes of the newest ruleset; empty when the game has none. */
+  modes: string[];
   /** Achievements are defined by the newest ruleset; ids are stable across rulesets. */
   achievements: AchievementSpec[];
 };
@@ -96,10 +100,15 @@ export function buildRegistry(configs: GameConfig[], bundles: RulesetBundle[]): 
       builds,
       boards: new Set(Object.keys(config.boards)),
       defaultBoard: latestBoard,
+      modes: latest.modes ?? [],
       achievements: latest.achievements,
     });
   }
   return registry;
 }
+
+/** Results and bests key a moded run's board as `<board>/<mode>`. */
+export const boardKey = (board: string, mode: string | null | undefined) =>
+  mode ? `${board}/${mode}` : board;
 
 export const registry = buildRegistry(gameConfigs, rulesetBundles);

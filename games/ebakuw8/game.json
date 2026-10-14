@@ -1,0 +1,23 @@
+{
+  "id": "ebakuw8",
+  "name": "EBAKUW8",
+  "source": "Y:/projs/walangstudio/ebakuw8",
+  "entry": "modules.ranked",
+  "boards": {
+    "stages": ["999b093787c960ca"]
+  },
+  "builds": [
+    {
+      "id": "ebakuw8-web-direct-0.3.0",
+      "ruleset": "999b093787c960ca",
+      "runtime": "web",
+      "channel": "direct"
+    },
+    {
+      "id": "ebakuw8-windows-direct-0.3.0",
+      "ruleset": "999b093787c960ca",
+      "runtime": "windows",
+      "channel": "direct"
+    }
+  ]
+}

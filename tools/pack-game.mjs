@@ -154,6 +154,9 @@ const vm = await LuaVm.create({
 const buttons = Number(vm.call('sv_buttons', game.entry));
 if (!Number.isInteger(buttons) || buttons < 1 || buttons > 16)
   throw new Error(`buttons must be 1..16, got ${buttons}`);
+const modes = vm.call('sv_modes', game.entry).split(',').filter(Boolean);
+if (modes.some((m) => !/^[a-z0-9_]{1,32}$/.test(m)) || new Set(modes).size !== modes.length)
+  throw new Error(`modes must be unique [a-z0-9_]{1,32} ids, got ${modes.join(',')}`);
 const achievements = vm
   .call('sv_catalog', game.entry)
   .split('\n')
@@ -175,7 +178,7 @@ const achievements = vm
 if (new Set(achievements.map((a) => a.id)).size !== achievements.length)
   throw new Error('duplicate achievement id');
 // Smoke run: catches platform-dependent calls the lint missed (the VM removes them).
-vm.call('sv_start', `${game.entry}|1`);
+vm.call('sv_start', `${game.entry}|1${modes.length ? `|${modes[0]}` : ''}`);
 vm.call('sv_steps', `600:0`);
 const facts = vm
   .call('sv_facts')
@@ -194,7 +197,7 @@ const outDir = join(root, 'games', gameId, 'rulesets');
 mkdirSync(outDir, { recursive: true });
 writeFileSync(
   join(outDir, `${ruleset}.json`),
-  `${JSON.stringify({ game: gameId, ruleset, entry: game.entry, buttons, source: { commit, dirty }, achievements, modules: sorted }, null, 2)}\n`,
+  `${JSON.stringify({ game: gameId, ruleset, entry: game.entry, buttons, ...(modes.length ? { modes } : {}), source: { commit, dirty }, achievements, modules: sorted }, null, 2)}\n`,
 );
 
 const lines = [
@@ -224,7 +227,16 @@ lines.push(
   `export const rulesets: RulesetBundle[] = [${rulesetIdents.join(', ')}];`,
   '',
 );
-writeFileSync(join(root, 'games', 'rulesets.generated.ts'), lines.join('\n'));
+const generated = join(root, 'games', 'rulesets.generated.ts');
+writeFileSync(generated, lines.join('\n'));
+// Long registries wrap; let the project formatter decide so `biome check` stays clean.
+execFileSync(
+  process.execPath,
+  [join(root, 'node_modules', '@biomejs', 'biome', 'bin', 'biome'), 'format', '--write', generated],
+  {
+    stdio: 'ignore',
+  },
+);
 console.log(
   `packed ${gameId} ruleset ${ruleset} from ${commit.slice(0, 8)}${dirty ? ' (dirty)' : ''}: ${names.join(', ')}`,
 );

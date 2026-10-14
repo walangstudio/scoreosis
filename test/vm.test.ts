@@ -33,6 +33,30 @@ describe('verifier VM in workerd', () => {
     expect(() => vm.call('sv_status')).toThrow(VmError);
   });
 
+  it('fails cleanly on deep C recursion within the 1 MiB stack', async () => {
+    const deep = `function sv_meta()
+        local t = setmetatable({}, { __index = function(self, k) return self[k + 1] end })
+        return t[1]
+      end
+      function sv_gsub(n)
+        local function f(s) if #s < 400 then return (string.gsub(s .. "x", "x$", f)) end return s end
+        return f("")
+      end`;
+    const nested = `return ${'{'.repeat(5000)}${'}'.repeat(5000)}`;
+    const vm = await LuaVm.create({ wasm, driver, modules: { ...bundle.modules, deep }, limits });
+    vm.call('require', 'deep');
+    expect(() => vm.call('sv_meta')).toThrow(/stack overflow/);
+    const gsub = await LuaVm.create({ wasm, driver, modules: { ...bundle.modules, deep }, limits });
+    gsub.call('require', 'deep');
+    expect(() => gsub.call('sv_gsub', '0')).toThrow(/stack overflow/);
+    await expect(
+      LuaVm.create({ wasm, driver, modules: { ...bundle.modules, nested }, limits }),
+    ).rejects.toThrow(/syntax levels/);
+    const fresh = await LuaVm.create({ wasm, driver, modules: bundle.modules, limits });
+    fresh.call('sv_start', 'game.ranked|42');
+    expect(fresh.call('sv_steps', '30:1')).toMatch(/^30\|/);
+  });
+
   it('caps Lua memory', async () => {
     const hog = 'function sv_hog() local t = {} for i = 1, 1e8 do t[i] = i end end';
     const vm = await LuaVm.create({

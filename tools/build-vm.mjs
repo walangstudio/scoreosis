@@ -103,6 +103,11 @@ execFileSync(
     ...CORE.map((f) => join(src, `${f}.c`)),
     join(root, 'vm', 'sv.c'),
     '-Wl,--no-entry',
+    // Start small and grow on demand: every loaded verifier holds its memory, and a
+    // Worker isolate's objects share one 128 MB limit. Zig's default 16 MiB stack made
+    // each VM 17 MiB.
+    '-Wl,-z,stack-size=1048576',
+    '-Wl,--initial-memory=2097152',
     '-Wl,--max-memory=67108864',
     '-Wl,--strip-all',
     ...EXPORTS.map((e) => `-Wl,--export=${e}`),

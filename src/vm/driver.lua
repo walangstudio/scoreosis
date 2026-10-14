@@ -14,12 +14,13 @@ local function open(name)
 	max_bits = 2 ^ game.buttons - 1
 end
 
--- "module|seed"
+-- "module|seed" or "module|seed|mode"
 function sv_start(arg)
-	local name, seed = string.match(arg, "^([%w_%.]+)|(%d+)$")
+	local name, seed, mode = string.match(arg, "^([%w_%.]+)|(%d+)|([%w_]+)$")
+	if not name then name, seed = string.match(arg, "^([%w_%.]+)|(%d+)$") end
 	if not name then error("bad start argument") end
 	open(name)
-	sim = game.new(tonumber(seed))
+	sim = game.new(tonumber(seed), mode)
 	tick = 0
 	return status()
 end
@@ -72,6 +73,12 @@ function sv_facts()
 	local out = {}
 	for i = 1, #names do out[i] = names[i] .. "=" .. string.format("%.0f", facts[names[i]]) end
 	return table.concat(out, "\n")
+end
+
+-- Optional M.modes: one board per mode, chosen when a run starts. Comma-separated.
+function sv_modes(name)
+	open(name)
+	return table.concat(game.modes or {}, ",")
 end
 
 function sv_buttons(name)

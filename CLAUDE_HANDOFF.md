@@ -1,15 +1,17 @@
 # Scoreosis implementation handoff for Claude
 
-Date: 2026-10-13
+Date: 2026-10-14
 Project: Scoreosis
 Intended repository: walangstudio/scoreosis
-Status: Implemented locally (not deployed, not pushed). Ah!Steroids and Sneak run verified ranked play end to end against `wrangler dev`. ebakuw8 is next (docs/INTEGRATION.md section 6).
+Status: Implemented locally (not deployed, not pushed). Ah!Steroids and Sneak run verified ranked play end to end against `wrangler dev`. ebakuw8 is registered with per-stage modes; its server flow test verifies, but a browser run has not yet reached VERIFIED (local `wrangler dev` answered in seconds under load).
 
 Gaps found while implementing, now covered:
 
 - Sneak's sim lives on the controller instance; a reused table leaked `next_obstacle_id` and desynced at tick 60. `sim.new_game` clears every saved field.
 - Sneak inputs are discrete actions, not held buttons: two per tick, `first + 10 * second`, `buttons = 7`.
 - Lag is measured from the Worker's arrival time with the baseline anchored at the first chunk; local dev latency counted as player lag otherwise.
+- A browser's CORS preflight delays only the first chunk; until the first pause a chunk may move the baseline earlier (never before run creation), or the next on-time chunk failed as ahead of real time.
+- Each verifier VM reserved 17 MiB (zig's default 16 MiB stack); it is now about 3 MiB.
 
 Still unverified: Durable Object CPU on the free plan, native ARM64/iOS parity, and a staging deploy. Free-tier capacity is about 25 player-hours per day at 1 s chunks.
 

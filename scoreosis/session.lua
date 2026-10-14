@@ -16,12 +16,14 @@ local MAX_TICKS_PER_FRAME = 8
 local MAX_BACKLOG_TICKS = 120
 local RETRIES = 3
 
--- client: scoreosis.client; game: ranked module; now(): wall-clock seconds.
-function M.new(client, game, now)
+-- client: scoreosis.client; game: ranked module; now(): wall-clock seconds;
+-- mode: one of game.modes for a moded game, else nil.
+function M.new(client, game, now, mode)
 	return setmetatable({
 		client = client,
 		game = game,
 		now = now,
+		mode = mode,
 		status = "starting",
 		tick = 0,
 		sent_tick = 0,
@@ -49,14 +51,14 @@ function M:start(callback)
 			callback(false)
 			return
 		end
-		self.client:call("POST", self.client:game_path("/runs"), { build_id = self.client.build_id }, function(started, run)
+		self.client:call("POST", self.client:game_path("/runs"), { build_id = self.client.build_id, mode = self.mode }, function(started, run)
 			if not started then
 				go_local(self, run.code)
 				callback(false)
 				return
 			end
 			self.run = run
-			self.sim = self.game.new(run.seed)
+			self.sim = self.game.new(run.seed, self.mode)
 			self.status = "ranked"
 			self.base_time, self.base_tick = self.now(), 0
 			self.started_at = self.base_time
@@ -113,7 +115,9 @@ function M:flush()
 	local body = { seq = self.seq, from_tick = self.sent_tick, inputs = codec.encode_inputs(ticks) }
 	-- The first chunk tells the server when play really began (see anchorBaseline).
 	if self.seq == 0 then body.elapsed_ms = math.floor((self.now() - self.started_at) * 1000) end
-	if last == count then body.checksum = codec.checksum(codec.encode(self.game.save(self.sim))) end
+	if last == count then
+		body.checksum = self.final_checksum or codec.checksum(codec.encode(self.game.save(self.sim)))
+	end
 	self.in_flight = true
 	self:send(body, RETRIES, function(ok, ack)
 		self.in_flight = false
@@ -209,6 +213,8 @@ function M:finish()
 		return
 	end
 	self.status = "finishing"
+	-- The game may keep animating a finished sim (an outro); the run ended here.
+	self.final_checksum = codec.checksum(codec.encode(self.game.save(self.sim)))
 	self:drain(function(drained)
 		if drained then
 			self:poll_finish()

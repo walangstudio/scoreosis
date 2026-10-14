@@ -15,6 +15,8 @@ function M.new(platform, base_url, game_id, build_id)
 		base_url = base_url,
 		game_id = game_id,
 		build_id = build_id,
+		-- Build ids are <game>-<runtime>-<channel>-<version>.
+		runtime = build_id:match("^[^-]+%-([^-]+)%-[^-]+%-.+$"),
 		token = platform.load_token(),
 	}, M)
 end
@@ -68,11 +70,14 @@ function M:ensure_guest(callback)
 	end)
 end
 
--- filters: { board, country, runtime, channel, page, me }
+-- filters: { board, mode, country, runtime, channel, page, me }. Platforms never
+-- mix: runtime defaults to this build's own.
 function M:leaderboard(filters, callback)
 	local query = {}
-	for _, key in ipairs({ "board", "country", "runtime", "channel", "page" }) do
-		if filters[key] ~= nil then query[#query + 1] = key .. "=" .. tostring(filters[key]) end
+	for _, key in ipairs({ "board", "mode", "country", "runtime", "channel", "page" }) do
+		local value = filters[key]
+		if key == "runtime" and value == nil then value = self.runtime end
+		if value ~= nil then query[#query + 1] = key .. "=" .. tostring(value) end
 	end
 	if filters.me and self.token then query[#query + 1] = "me=1" end
 	local path = self:game_path("/leaderboards") .. (#query > 0 and "?" .. table.concat(query, "&") or "")
