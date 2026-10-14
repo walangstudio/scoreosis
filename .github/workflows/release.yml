@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Check the tag is on main and matches the version and changelog
