@@ -273,6 +273,29 @@ test("catches up after a frame hitch instead of losing the time", function()
 	eq(s.tick, 90)
 end)
 
+test("a catch-up frame stops stepping at the terminal tick", function()
+	local f, s = started(3)
+	f.time = f.time + 8 / 60
+	for _ = 1, s:due() do s:step(1) end
+	eq(s.tick, 3)
+	eq(s.sim.tick, 3)
+	eq(f.requests[1].body.inputs, "3:1")
+end)
+
+test("abandoning before the start reply abandons the late run and stays local", function()
+	local f = fake()
+	f.token = "tok"
+	local c = client_mod.new(f.platform, "https://x", "toy", "toy-dev")
+	local s = session_mod.new(c, toy(600), f.now)
+	local answered
+	s:start(function(ok) answered = ok end)
+	s:abandon()
+	f.answer(201, { run_id = "r1", seed = 9 })
+	eq(s.status, "local", "a late start reply must not revive the run")
+	eq(answered, false)
+	eq(f.requests[#f.requests].url, "https://x/v1/games/toy/runs/r1/abandon")
+end)
+
 test("local progress mirrors best-run and total semantics", function()
 	local specs = {
 		{ id = "best", fact = "score", mode = "run", gte = 100 },

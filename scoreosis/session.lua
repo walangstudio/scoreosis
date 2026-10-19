@@ -46,12 +46,20 @@ end
 -- Starts a ranked run; callback(ok) fires once the simulation exists.
 function M:start(callback)
 	self.client:ensure_guest(function(ok, err)
+		if self.status ~= "starting" then return callback(false) end
 		if not ok then
 			go_local(self, err and err.code or "network")
 			callback(false)
 			return
 		end
 		self.client:call("POST", self.client:game_path("/runs"), { build_id = self.client.build_id, mode = self.mode }, function(started, run)
+			-- Abandoned while waiting: give up the run the server just created.
+			if self.status ~= "starting" then
+				if started then
+					self.client:call("POST", self.client:game_path("/runs/" .. run.run_id .. "/abandon"), {}, function() end, true)
+				end
+				return callback(false)
+			end
 			if not started then
 				go_local(self, run.code)
 				callback(false)
@@ -85,6 +93,8 @@ end
 
 -- Advances one tick with the button bitmask.
 function M:step(bits)
+	-- A catch-up frame can owe more ticks than remain before game over.
+	if self.game.finished(self.sim) then return end
 	self.game.step(self.sim, bits)
 	self.tick = self.tick + 1
 	if self.status == "local" then return end
