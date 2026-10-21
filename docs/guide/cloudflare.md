@@ -78,7 +78,7 @@ Any other branch or tag is skipped, and so is a fork. The job creates the D1 dat
 2. In the GitHub repository or organization settings, add the variable `CLOUDFLARE_ACCOUNT_ID` (your account id, from the dashboard sidebar) and the secret `CLOUDFLARE_API_TOKEN`.
 3. Under **Environments**, limit `staging` to the `main` branch and `production` to `v*` tags, so GitHub refuses a deploy job on any other ref. Add required reviewers to `production` if a tag should wait for approval.
 
-Set `ADMIN_TOKEN` (step 4) by hand; until then the admin routes refuse every request.
+To have the workflow upload `ADMIN_TOKEN` (step 4), store it as an `ADMIN_TOKEN` secret on each GitHub environment: `gh secret set ADMIN_TOKEN --env production` (paste the token you keep; generate it with `openssl rand -hex 32`). Without it the admin routes refuse every request.
 
 ```sh
 gh variable set CLOUDFLARE_ACCOUNT_ID --body <account-id>

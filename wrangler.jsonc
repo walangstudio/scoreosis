@@ -31,7 +31,7 @@
   ],
   "env": {
     "staging": {
-      "routes": [{ "pattern": "scores-staging.walang.studio", "custom_domain": true }],
+      "routes": [{ "pattern": "scoreosis-staging.walang.studio", "custom_domain": true }],
       "vars": {
         "VERIFY_INSTRUCTIONS": "1000000",
         "MAX_RUNS_PER_DAY": "500",
@@ -52,7 +52,7 @@
       ]
     },
     "production": {
-      "routes": [{ "pattern": "scores.walang.studio", "custom_domain": true }],
+      "routes": [{ "pattern": "scoreosis.walang.studio", "custom_domain": true }],
       "vars": {
         "VERIFY_INSTRUCTIONS": "1000000",
         "MAX_RUNS_PER_DAY": "750",

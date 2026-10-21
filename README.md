@@ -10,7 +10,7 @@ Verified leaderboards and achievements for games, on Cloudflare Workers' free pl
 
 Clients upload button inputs, not scores. The server replays them through the game's own Lua simulation, in a sandboxed Lua 5.1 Wasm VM, and ranks only what it verified. Achievements run on [BadgeTrip](https://github.com/walangstudio/badgetrip).
 
-> **Status:** early (0.x). Tested locally in workerd; not yet deployed or measured on Cloudflare. Changes are listed in the [CHANGELOG](CHANGELOG.md).
+> **Status:** early (0.x). Deployed on Cloudflare Workers; not yet measured under real load. Changes are listed in the [CHANGELOG](CHANGELOG.md).
 
 ## Why
 

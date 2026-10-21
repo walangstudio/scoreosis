@@ -66,4 +66,12 @@ jobs:
       - name: Apply D1 migrations
         run: pnpm exec wrangler d1 migrations apply "scoreosis-$TARGET" --remote --env "$TARGET"
       - name: Deploy the Worker
-        run: pnpm exec wrangler deploy --env "$TARGET"
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          secrets=()
+          if [ -n "$ADMIN_TOKEN" ]; then
+            jq -n --arg t "$ADMIN_TOKEN" '{ADMIN_TOKEN: $t}' > "$RUNNER_TEMP/secrets.json"
+            secrets=(--secrets-file "$RUNNER_TEMP/secrets.json")
+          fi
+          pnpm exec wrangler deploy --env "$TARGET" "${secrets[@]}"

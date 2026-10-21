@@ -2,6 +2,18 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
+## [0.1.1] - 2026-10-21
+
+### Fixed
+
+- Lua client: a catch-up frame no longer steps or uploads past the terminal tick.
+- Lua client: abandoning while a run is starting abandons the run the server creates late, instead of resuming it.
+
+### Changed
+
+- Deploys run only from `main` (staging) and `v*` tags (production); the workflow creates the D1 database, registers the workers.dev subdomain and uploads `ADMIN_TOKEN` from the GitHub environment.
+- Hosted at `scoreosis.walang.studio` and `scoreosis-staging.walang.studio`.
+
 ## [0.1.0] - 2026-10-14
 
 First release.
