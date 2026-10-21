@@ -23,7 +23,7 @@ npx wrangler d1 create scoreosis-staging
 npx wrangler d1 create scoreosis-production
 ```
 
-Each command prints a `database_id`. Put them in `wrangler.jsonc`, replacing `REPLACE_WITH_STAGING_D1_ID` and `REPLACE_WITH_PRODUCTION_D1_ID`.
+`wrangler.jsonc` binds them by `database_name`; wrangler looks the id up, so nothing needs to be pasted back. The GitHub deploy workflow creates them itself on its first run.
 
 ## 3. Apply the schema
 
@@ -70,13 +70,15 @@ pnpm deploy:production
 | --- | --- |
 | Push to `main` | staging |
 | Tag `v*` | production |
-| Run workflow by hand | staging or production, your choice |
+| Run workflow by hand | staging from `main`, production from a `v*` tag |
 
-It stays inactive until you finish steps 2 to 5 above (databases with their ids committed in `wrangler.jsonc`, admin secrets, origins) and then give the repository access to Cloudflare:
+Any other branch or tag is skipped, and so is a fork. The job creates the D1 database if it does not exist yet. It stays inactive until the repository or its organization has Cloudflare access:
 
 1. In the Cloudflare dashboard, create an API token from the **Edit Cloudflare Workers** template and make sure it includes **D1: Edit**.
-2. In the GitHub repository settings, add the variable `CLOUDFLARE_ACCOUNT_ID` (your account id, from the dashboard sidebar) and the secret `CLOUDFLARE_API_TOKEN`.
-3. Optional: under **Environments**, add required reviewers to `production` so a tag waits for approval before it deploys.
+2. In the GitHub repository or organization settings, add the variable `CLOUDFLARE_ACCOUNT_ID` (your account id, from the dashboard sidebar) and the secret `CLOUDFLARE_API_TOKEN`.
+3. Under **Environments**, limit `staging` to the `main` branch and `production` to `v*` tags, so GitHub refuses a deploy job on any other ref. Add required reviewers to `production` if a tag should wait for approval.
+
+Set `ADMIN_TOKEN` (step 4) by hand; until then the admin routes refuse every request.
 
 ```sh
 gh variable set CLOUDFLARE_ACCOUNT_ID --body <account-id>

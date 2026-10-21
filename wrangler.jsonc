@@ -41,7 +41,6 @@
         {
           "binding": "DB",
           "database_name": "scoreosis-staging",
-          "database_id": "REPLACE_WITH_STAGING_D1_ID",
           "migrations_dir": "migrations"
         }
       ],
@@ -62,7 +61,6 @@
         {
           "binding": "DB",
           "database_name": "scoreosis-production",
-          "database_id": "REPLACE_WITH_PRODUCTION_D1_ID",
           "migrations_dir": "migrations"
         }
       ],

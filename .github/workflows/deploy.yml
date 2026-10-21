@@ -1,8 +1,8 @@
 name: Deploy
 
-# Staging deploys on every push to main, production on a release tag or by hand.
-# Inactive until the repository variable CLOUDFLARE_ACCOUNT_ID and the secret
-# CLOUDFLARE_API_TOKEN are set; see docs/guide/cloudflare.md.
+# Staging deploys on every push to main, production on a release tag.
+# Inactive until the variable CLOUDFLARE_ACCOUNT_ID and the secret
+# CLOUDFLARE_API_TOKEN are set (repository or organization); see docs/guide/cloudflare.md.
 
 on:
   push:
@@ -20,9 +20,17 @@ concurrency:
   group: deploy-${{ github.event.inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
-    if: vars.CLOUDFLARE_ACCOUNT_ID != ''
+    # Only main deploys staging and only v* tags deploy production, even when run by hand.
+    # The staging and production environments enforce the same refs on GitHub's side.
+    if: >-
+      vars.CLOUDFLARE_ACCOUNT_ID != '' && github.repository == 'walangstudio/scoreosis' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      (github.ref_type == 'tag' || github.event.inputs.environment != 'production')
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.event.inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
@@ -46,6 +54,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: python tools/test-lua.py
+      - name: Create the D1 database on first deploy
+        run: pnpm exec wrangler d1 info "scoreosis-$TARGET" --env "$TARGET" > /dev/null || pnpm exec wrangler d1 create "scoreosis-$TARGET"
       - name: Apply D1 migrations
         run: pnpm exec wrangler d1 migrations apply "scoreosis-$TARGET" --remote --env "$TARGET"
       - name: Deploy the Worker
