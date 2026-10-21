@@ -54,6 +54,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: python tools/test-lua.py
+      # Cloudflare refuses Durable Object Workers until the account has a workers.dev subdomain.
+      - name: Register the account's workers.dev subdomain if it has none
+        run: |
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          curl -sf -H "$auth" "$api" > /dev/null ||
+            curl -s --fail-with-body -X PUT -H "$auth" -H 'Content-Type: application/json' -d '{"subdomain":"walangstudio"}' "$api"
       - name: Create the D1 database on first deploy
         run: pnpm exec wrangler d1 info "scoreosis-$TARGET" --env "$TARGET" > /dev/null || pnpm exec wrangler d1 create "scoreosis-$TARGET"
       - name: Apply D1 migrations
