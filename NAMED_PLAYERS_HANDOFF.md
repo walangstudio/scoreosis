@@ -4,6 +4,8 @@ Date: 2026-10-22
 Owner: Scoreosis, with client integration in Sneak and Ah!Steroids.
 Status: Requirements and implementation plan only. This handoff does not implement naming or deploy changes.
 
+Read [UI_SIMPLIFICATION_PLAN.md](UI_SIMPLIFICATION_PLAN.md) for the newer presentation requirements: a single Play action with automatic online scoring, Global/Local only, no verification labels, and no achievements UI in this release. Keep naming and progress integrity from this handoff; references to achievement data do not require displaying achievements.
+
 ## User requirement
 
 Players must choose their leaderboard name. Do not show or automatically assign `Guest-XXXXXX` as their public identity. Both games need name entry when a player earns a new personal high score. Use `kitty` for every live test identity.

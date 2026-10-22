@@ -1,5 +1,9 @@
 # Scoreosis implementation handoff for Claude
 
+## Latest product direction - simpler game UI
+
+Read [UI_SIMPLIFICATION_PLAN.md](UI_SIMPLIFICATION_PLAN.md) first. The user's latest instruction is one automatic Play flow, only Global and Local scores, no visible verification labels, and no achievements UI for this release. Global stays separated by runtime platform, as explicitly confirmed. This supersedes conflicting presentation requirements below; preserve server validation and saved progress.
+
 ## Current priority - player-chosen names
 
 Read [NAMED_PLAYERS_HANDOFF.md](NAMED_PLAYERS_HANDOFF.md) first. The user's 2026-10-22 instruction supersedes this document's generated Guest-name behavior: players must choose their public name, including through a high-score prompt. Production is now at `https://scoreosis.walang.studio`; older deployment-status statements below are historical. Use `kitty` for any authorized live test identity.
