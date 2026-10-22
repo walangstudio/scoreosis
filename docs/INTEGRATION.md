@@ -31,7 +31,7 @@ return M
 Two reference shapes:
 
 - Ah!Steroids `game/ranked.lua`: the sim is its own table, input bits are held buttons.
-- Sneak `script/ranked.lua`: inputs are discrete actions packed into the bits (`first + 10 * second`, `buttons = 7`). The controller instance is the sim; it applies each action when pressed and records it for the next tick, and its session adapter's `step` only advances time (`script/online.lua`).
+- Sneak `script/ranked.lua`: inputs are discrete actions packed into the bits (`first + 10 * second`, `buttons = 7`). The controller instance is the sim. Ranked actions are queued and applied at tick boundaries; local actions apply immediately. The session adapter's `step` advances time (`script/online.lua`).
 
 - ebakuw8 `modules/ranked.lua`: one run is one stage, so the module exports `modes` (stage ids) and `new(seed, mode)` builds that stage; each mode has its own leaderboard. Up to three 4-bit input codes per tick (`first + 16 * second + 256 * third`, `buttons = 12`). The controller is the sim; ranked play queues codes and applies them at the tick boundary (local play applies them at once), and `ranked.advance` steps without dropping the events the game presents.
 
@@ -54,7 +54,17 @@ The packer enforces these; the server VM removes the forbidden functions.
 node tools/sync-client.mjs <game-checkout>
 ```
 
-Copies `scoreosis/*.lua` into the game. The packer refuses a stale copy.
+Copies `scoreosis/*.lua`, `cacert.pem`, and the `scoreosis_tls` native extension into the game. Regenerate the vendored files through this command. The packer checks shared simulation dependencies for stale copies.
+
+Games must include `/scoreosis/cacert.pem` in `[project] custom_resources`. The bundle contains public GTS, ISRG, and SSL.com roots imported from the Defold SDK's Mozilla bundle. Refresh it with `python tools/import-ca.py <bob.jar>`, then sync the client again.
+
+Defold 1.13.1's file loader allocates exactly the PEM size, but its TLS setter reads one extra byte. Certificate loading can fail and silently disable verification. The small `scoreosis_tls` extension passes a NUL-terminated Lua string to the checked engine setter instead. `scoreosis.defold` refuses native HTTPS requests if initialization fails or the extension is absent. Keep this shim while using the affected engine; remove it only after verifying an engine fix with repeated certificate rejection tests. Web builds use the browser's certificate verification.
+
+The client requires HTTPS. Debug Defold builds may use HTTP on `127.0.0.1:<port>` or `localhost:<port>` for local development. Release builds reject plain HTTP before sending credentials.
+
+Both reference games default to `itch_io` for Web, Windows, and Android. Builds keep runtime and provider separate. A game's Web board uses `runtime=web` with no channel filter, sharing one ranking across Web providers. An explicit `channel=itch_io` narrows it to itch scores without mixing runtimes.
+
+`client:platform_best(callback)` reads the platform record without creating a guest or sending credentials. Reference games show it as WEB BEST, WINDOWS BEST, or the relevant runtime. Offline fallback is labeled LOCAL BEST; personal records remain in Local Top 10. The public record follows the leaderboard's 30-second cache.
 
 ## 4. Pack and register
 
@@ -68,7 +78,7 @@ Copies `scoreosis/*.lua` into the game. The packer refuses a stale copy.
   "source": "Y:/projs/walangstudio/mygame",
   "entry": "game.ranked",
   "boards": { "classic": ["<ruleset>"] },
-  "builds": [{ "id": "mygame-web-itch-1.0.0", "ruleset": "<ruleset>", "runtime": "web", "channel": "itch_io" }]
+  "builds": [{ "id": "mygame-web-itch_io-1.0.0", "ruleset": "<ruleset>", "runtime": "web", "channel": "itch_io" }]
 }
 ```
 

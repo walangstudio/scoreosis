@@ -107,6 +107,19 @@ describe('leaderboards', () => {
     }
   });
 
+  it('shares the Web board across providers and preserves each provider best', async () => {
+    const user = await player('web-provider-player');
+    await result(user, 100, { country: 'CA', runtime: 'web', channel: 'itch_io' });
+    await result(user, 200, { country: 'CA', runtime: 'web', channel: 'steam' });
+    await result(user, 500, { country: 'CA', runtime: 'windows', channel: 'itch_io' });
+    expect((await board('?country=CA&runtime=web')).entries).toEqual([
+      { rank: 1, name: 'web-provider-player', score: 200 },
+    ]);
+    expect((await board('?country=CA&runtime=web&channel=itch_io')).entries).toEqual([
+      { rank: 1, name: 'web-provider-player', score: 100 },
+    ]);
+  });
+
   it('hides banned players and recomputes bests after suppression', async () => {
     const hide = await api(`/v1/admin/games/ahsteroids/players/${id('ben')}/hide`, {
       body: {},

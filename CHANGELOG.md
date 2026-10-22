@@ -2,6 +2,11 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
+## Unreleased
+
+- 2026-10-19: Register itch builds for Sneak and Ah!Steroids on Web, Windows, and Android; preserve shared platform boards and optional provider filters.
+- Reject insecure client URLs before sending credentials; vendor public issuer roots for native certificate verification.
+
 ## [0.1.1] - 2026-10-21
 
 ### Fixed

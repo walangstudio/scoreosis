@@ -23,7 +23,7 @@ Goal: competitive results come only from legal, real-time gameplay of a register
 
 - A guest token is `<player_id>.<secret>`, 256 random bits of secret. Only its SHA-256 is stored, in the player's object. The token is returned once. It is a bearer credential: anything that reads the game's save can use it.
 - `ADMIN_TOKEN` is a Worker secret of at least 32 characters, compared as hashes. Never ship it or any signing key in a game build.
-- Native clients must use HTTPS with certificate verification.
+- Native clients require HTTPS and initialized certificate verification. The reference games use the vendored public issuer roots through `scoreosis_tls`, which works around Defold 1.13.1's PEM loader defect. Missing roots, a missing extension, or failed initialization stops requests before credentials are sent. Only debug builds may use plain HTTP on loopback for development; the client refuses other insecure URLs before sending credentials.
 
 ## Known limits
 

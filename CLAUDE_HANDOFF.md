@@ -1,5 +1,9 @@
 # Scoreosis implementation handoff for Claude
 
+## Current priority - player-chosen names
+
+Read [NAMED_PLAYERS_HANDOFF.md](NAMED_PLAYERS_HANDOFF.md) first. The user's 2026-10-22 instruction supersedes this document's generated Guest-name behavior: players must choose their public name, including through a high-score prompt. Production is now at `https://scoreosis.walang.studio`; older deployment-status statements below are historical. Use `kitty` for any authorized live test identity.
+
 Date: 2026-10-14
 Project: Scoreosis
 Intended repository: walangstudio/scoreosis

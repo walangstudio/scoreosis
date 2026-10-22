@@ -310,6 +310,35 @@ test("local progress mirrors best-run and total semantics", function()
 	eq(#progress.apply(r, specs, { score = 500, kills = 50 }), 0, "unlocks once")
 end)
 
+test("platform records are shared across providers without requiring a guest", function()
+	local f = fake()
+	for _, provider in ipairs({ "itch_io", "steam" }) do
+		local c = client_mod.new(f.platform, "https://x", "toy", "toy-web-" .. provider .. "-1")
+		local score
+		c:platform_best(function(ok, value) assert(ok); score = value end)
+		eq(f.requests[1].url, "https://x/v1/games/toy/leaderboards?runtime=web")
+		eq(f.requests[1].headers.Authorization, nil)
+		f.answer(200, {entries = {{score = 12345}}})
+		eq(score, 12345)
+	end
+end)
+
+test("credentials never leave over non-local plain HTTP", function()
+	local f = fake()
+	f.token = "private-token"
+	local c = client_mod.new(f.platform, "http://scores.example", "toy", "toy-web-itch_io-1")
+	local result
+	c:achievements(function(ok, err) result = { ok, err } end)
+	eq(#f.requests, 0, "insecure requests must not send credentials")
+	eq(result[1], false)
+	eq(result[2].code, "insecure_url")
+	f.platform.allow_http = true
+	client_mod.new(f.platform, "http://127.0.0.1:8787", "toy", "toy-web-itch_io-1"):achievements(function() end)
+	eq(#f.requests, 1, "debug loopback development remains available")
+	client_mod.new(f.platform, "http://scores.example", "toy", "toy-web-itch_io-1"):achievements(function() end)
+	eq(#f.requests, 1, "debug mode must not allow remote plain HTTP")
+end)
+
 test("codec round-trips awkward numbers exactly", function()
 	local values = { 0.1, -0.0, 1e300, -2.5e-310, 2 ^ 53 + 2, 1 / 3, -7, 0 }
 	for _, v in ipairs(values) do

@@ -23,7 +23,13 @@ end
 
 -- callback(ok, body_or_error). Errors are { code = "...", message = "...", status = n }.
 function M:call(method, path, body, callback, private)
-	local headers = { ["Content-Type"] = "application/json" }
+	local local_url = self.base_url:match("^http://127%.0%.0%.1:%d+/?$")
+		or self.base_url:match("^http://localhost:%d+/?$")
+	if not self.base_url:match("^https://") and not (self.platform.allow_http and local_url) then
+		callback(false, { code = "insecure_url", message = "HTTPS is required", status = 0 })
+		return
+	end
+	local headers = body and { ["Content-Type"] = "application/json" } or {}
 	if private then
 		if not self.token then
 			callback(false, { code = "unauthorized", message = "no guest token", status = 0 })
@@ -86,6 +92,16 @@ end
 
 function M:achievements(callback)
 	self:call("GET", self:game_path("/me/achievements"), nil, callback, true)
+end
+
+function M:platform_best(callback)
+	self:leaderboard({}, function(ok, body)
+		if not ok or type(body.entries) ~= "table" then return callback(false) end
+		local first = body.entries[1]
+		if first ~= nil and (type(first) ~= "table" or type(first.score) ~= "number"
+			or not (first.score >= 0 and first.score % 1 == 0)) then return callback(false) end
+		callback(true, first and first.score or 0)
+	end)
 end
 
 return M
