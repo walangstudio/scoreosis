@@ -10,7 +10,7 @@ import { achievementEngine, recordVerifiedRun } from '../src/achievements.js';
 import { sqliteStores } from '../src/badgetrip-sqlite.js';
 import { registry } from '../src/games.js';
 import { type PublishedResult, publishResult } from '../src/leaderboard.js';
-import { Player, api, stubFor, useClock } from './client.js';
+import { Player, api, nameTheGuest, stubFor, useClock } from './client.js';
 import { RULESET } from './fixtures.js';
 
 afterEach(() => {
@@ -150,6 +150,7 @@ describe('recovery', () => {
     expect(await runDurableObjectAlarm(stubFor(player.token))).toBe(true);
     const again = await player.finish();
     expect(again.body.published).toBe(true);
+    await nameTheGuest('ahsteroids', player.token);
     const board = await api('/v1/games/ahsteroids/leaderboards?me=1', { token: player.token });
     expect(board.body.me).toEqual({ rank: expect.any(Number), score: first.body.score });
   });

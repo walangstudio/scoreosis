@@ -11,7 +11,7 @@ import {
 } from './leaderboard.js';
 import { log } from './log.js';
 import type { InputChunk, PlayerSession } from './session.js';
-import { int, optionalInt, readJson, str } from './validate.js';
+import { displayName, int, optionalInt, readJson, str } from './validate.js';
 
 export { PlayerSession } from './session.js';
 
@@ -109,11 +109,11 @@ route('POST', /^\/v1\/guests$/, async ({ request, env }) => {
     throw new ApiError('unsupported_build', 'this build is not registered');
   const playerId = hex(crypto.getRandomValues(new Uint8Array(16)));
   const secret = base64url(crypto.getRandomValues(new Uint8Array(32)));
-  const displayName = `Guest-${playerId.slice(0, 6).toUpperCase()}`;
+  // Unnamed until the player chooses a name (PATCH /me/profile).
   await env.DB.prepare(
-    'INSERT INTO players (game_id, player_id, display_name, created_at) VALUES (?, ?, ?, ?)',
+    "INSERT INTO players (game_id, player_id, display_name, created_at) VALUES (?, ?, '', ?)",
   )
-    .bind(game.id, playerId, displayName, Date.now())
+    .bind(game.id, playerId, Date.now())
     .run();
   const registered = await session(env, game.id, playerId).register(
     game.id,
@@ -122,10 +122,7 @@ route('POST', /^\/v1\/guests$/, async ({ request, env }) => {
   );
   if (!registered) throw new ApiError('internal', 'player id collision');
   log('guest_created', { game: game.id });
-  return json(
-    { player_id: playerId, token: `${playerId}.${secret}`, display_name: displayName },
-    201,
-  );
+  return json({ player_id: playerId, token: `${playerId}.${secret}`, display_name: null }, 201);
 });
 
 route(
@@ -211,6 +208,35 @@ route(
     return reply(await auth.session.achievements(auth.secretHash), (r) => ({
       achievements: r.achievements,
     }));
+  },
+);
+
+route(
+  'GET',
+  /^\/v1\/games\/([a-z0-9_]+)\/me\/profile$/,
+  async ({ request, env }, [gameId = '']) => {
+    const auth = await authenticate(request, env, getGame(gameId).id);
+    return reply(
+      await auth.session.profile(auth.secretHash),
+      (r) => r.profile,
+      200,
+      'private, no-store',
+    );
+  },
+);
+
+route(
+  'PATCH',
+  /^\/v1\/games\/([a-z0-9_]+)\/me\/profile$/,
+  async ({ request, env }, [gameId = '']) => {
+    const auth = await authenticate(request, env, getGame(gameId).id);
+    const name = displayName(await readJson(request, JSON_LIMIT));
+    return reply(
+      await auth.session.rename(auth.secretHash, name),
+      (r) => r.profile,
+      200,
+      'private, no-store',
+    );
   },
 );
 
@@ -426,9 +452,10 @@ function reply<T extends object>(
   result: ({ ok: true } & T) | Failure,
   pick: (r: T) => unknown,
   status = 200,
+  cacheControl = 'no-store',
 ): Response {
   if (!result.ok) return errorResponse(result);
-  return json(pick(result as T), status, { 'cache-control': 'no-store' });
+  return json(pick(result as T), status, { 'cache-control': cacheControl });
 }
 
 function errorResponse(f: Failure): Response {
@@ -458,7 +485,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   if (!origin || !allowed.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
     'access-control-allow-headers': 'authorization, content-type',
     'access-control-max-age': '86400',
     vary: 'origin',

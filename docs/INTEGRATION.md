@@ -99,7 +99,8 @@ A ruleset is the hash of every packed module. Any change makes a new ruleset. Pu
 5. Pause: freeze, flush the partial chunk, `POST pause`. Resume: `POST resume`, then continue from the response.
 6. At the terminal tick, flush and `POST finish` until it leaves `verifying`.
 7. Any rejection or expiry: keep playing locally, label the run Local only, never resubmit it.
-8. Leaderboards never mix platforms. `client:leaderboard` defaults `runtime` to the build's own. Games show only that platform: no device or store filter. Name the screen LEADERBOARD with GLOBAL, COUNTRY, LOCAL TOP 10 and ACHIEVEMENTS.
+8. Names: a guest has no public name and stays off every board until it picks one. After the first verified score or a new personal best, if `client:profile` returns no `display_name`, ask for one after the run ends (never mid-run) with submit and cancel; `client:set_name(name, cb)` saves it. Cancelling keeps the result stored and private. Offer the same entry later from a profile or settings screen. Never show a generated Guest name. Show the rule (2-16 letters, digits, spaces) and that names are public.
+9. Leaderboards never mix platforms. `client:leaderboard` defaults `runtime` to the build's own. Games show only that platform: no device or store filter. Name the screen LEADERBOARD with GLOBAL, COUNTRY, LOCAL TOP 10 and ACHIEVEMENTS.
 
 ## 6. Modes
 

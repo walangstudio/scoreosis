@@ -42,6 +42,16 @@ export async function guest(game = 'ahsteroids', build = BUILD): Promise<string>
   return res.body.token;
 }
 
+/** Chooses the player's public name; unnamed players stay off the boards. */
+export async function nameTheGuest(game: string, token: string, name = 'kitty') {
+  const res = await api(`/v1/games/${game}/me/profile`, {
+    method: 'PATCH',
+    token,
+    body: { display_name: name },
+  });
+  if (res.status !== 200) throw new Error(`rename failed: ${JSON.stringify(res.body)}`);
+}
+
 /** Simulated clock shared by the test and the Durable Objects in this isolate. */
 // Far in the future: workerd fires alarms on real time, so a fake time near "now"
 // lets alarms race the tests. Tests run alarms with runDurableObjectAlarm.

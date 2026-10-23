@@ -12,7 +12,7 @@ Requests also read `request.cf.country` for country boards, which only Cloudflar
 
 ## Your options
 
-**Cloudflare, free or paid plan.** The supported target. As of 0.1.1 it runs on Workers (free plan) in staging and production; CPU per request and capacity have not been measured under load yet. See [Deploy to Cloudflare](cloudflare.md).
+**Cloudflare, free or paid plan.** The supported target. As of 0.2.0 it runs on Workers (free plan) in staging and production; CPU per request and capacity have not been measured under load yet. See [Deploy to Cloudflare](cloudflare.md).
 
 **`wrangler dev` on your own machine or server.** Runs the whole service locally, Durable Objects, D1 and rate limits included, with state on disk (`--persist-to <dir>`). Good for development, LAN play and testing a game before release. It is a development server: plain HTTP by default, no country data, and not built or tested for public traffic.
 

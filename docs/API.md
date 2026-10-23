@@ -61,7 +61,22 @@ Game name, boards, modes (empty for a game without them), runtime and channel va
 
 Body `{ "game_id": "ahsteroids", "build_id": "ahsteroids-web-itch-0.2.0" }`.
 
-`201 { "player_id", "token", "display_name" }`. The token is shown once; store it in the game's save. A guest belongs to one game installation. Clearing app data loses it.
+`201 { "player_id", "token", "display_name": null }`. The token is shown once; store it in the game's save. A guest belongs to one game installation. Clearing app data loses it.
+
+A new guest has no public name. Its verified results are stored and its achievements count, but it appears on no board until it chooses a name.
+
+### `GET /v1/games/:game/me/profile`
+
+`{ "display_name": "kitty" }`, or `{ "display_name": null }` before the player chooses one. Never cached.
+
+### `PATCH /v1/games/:game/me/profile`
+
+Body `{ "display_name": "kitty" }`, and no other field. Sets the caller's public name for this game and returns the saved name. The server trims the name and collapses repeated spaces; the result must be 2-16 ASCII letters and digits with single spaces between words, and must not start with `guest`. Case is kept. Names need not be unique and identify nobody: the token is the identity.
+
+- `400 bad_request`: invalid name or extra field. The previous name stays.
+- `429 rate_limited`: the name changed less than a minute ago.
+
+Naming makes the player's stored verified results rank at once; nothing is published or awarded again. Boards may show the old state for up to 30 s (cache). Names are public: tell players not to enter personal information.
 
 ### `POST /v1/games/:game/runs`
 
@@ -130,12 +145,12 @@ Query: `board` (default the newest), `mode` (moded games: each mode ranks separa
   "game": "ahsteroids", "board": "classic",
   "filters": { "country": null, "runtime": "android", "channel": null },
   "page": 0, "page_size": 25,
-  "entries": [{ "rank": 1, "name": "Guest-4F2A10", "score": 18450 }],
+  "entries": [{ "rank": 1, "name": "kitty", "score": 18450 }],
   "me": { "rank": 37, "score": 9120 }
 }
 ```
 
-Each player appears once with their best score inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the player has no result in the filter.
+Each player appears once with their best score inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the player has no result in the filter or has not chosen a name. Unnamed players take no rank.
 
 ### `GET /v1/games/:game/me/achievements`
 

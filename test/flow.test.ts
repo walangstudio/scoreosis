@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Player, api, useClock } from './client.js';
+import { Player, api, nameTheGuest, useClock } from './client.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -26,13 +26,19 @@ describe('verified ranked run', () => {
     expect(result.body.facts).toEqual(clientFacts);
     expect(result.body.published).toBe(true);
 
+    // Verified but unnamed: stored, not ranked.
+    const unnamed = await api('/v1/games/ahsteroids/leaderboards?runtime=web&me=1', {
+      token: player.token,
+    });
+    expect(unnamed.body.entries).toEqual([]);
+    expect(unnamed.body.me).toBeNull();
+    await nameTheGuest('ahsteroids', player.token);
+
     const board = await api('/v1/games/ahsteroids/leaderboards?runtime=web&channel=itch_io&me=1', {
       token: player.token,
     });
     expect(board.status).toBe(200);
-    expect(board.body.entries).toEqual([
-      { rank: 1, name: expect.stringMatching(/^Guest-/), score: clientFacts.score },
-    ]);
+    expect(board.body.entries).toEqual([{ rank: 1, name: 'kitty', score: clientFacts.score }]);
     expect(board.body.me).toEqual({ rank: 1, score: clientFacts.score });
 
     const achievements = await api('/v1/games/ahsteroids/me/achievements', { token: player.token });
@@ -49,6 +55,7 @@ describe('verified ranked run', () => {
   it('verifies an ebakuw8 stage run on that stage board only', async () => {
     const clock = useClock();
     const player = await Player.create(4242, undefined, 'ebakuw8');
+    await nameTheGuest('ebakuw8', player.token);
     const start = await player.start('ebakuw8-web-direct-0.3.0', 'diner');
     expect(start.status).toBe(201);
     expect(start.body).toMatchObject({ board: 'stages', mode: 'diner' });
@@ -92,6 +99,7 @@ describe('verified ranked run', () => {
     expect(result.body.facts).toEqual(clientFacts);
     expect(clientFacts).toHaveProperty('food');
 
+    await nameTheGuest('sneak', player.token);
     const board = await api('/v1/games/sneak/leaderboards?runtime=web&channel=itch_io&me=1', {
       token: player.token,
     });

@@ -10,7 +10,7 @@ let n = 0;
 async function player(name: string): Promise<string> {
   const id = (++n).toString(16).padStart(32, '0');
   await env.DB.prepare(
-    "INSERT INTO players (game_id, player_id, display_name, created_at) VALUES ('ahsteroids', ?, ?, 0)",
+    "INSERT INTO players (game_id, player_id, display_name, created_at, name_set_at) VALUES ('ahsteroids', ?, ?, 0, 0)",
   )
     .bind(id, name)
     .run();

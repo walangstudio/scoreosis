@@ -30,7 +30,12 @@ curl http://127.0.0.1:8787/v1/health
 curl -X POST http://127.0.0.1:8787/v1/guests \
   -H 'content-type: application/json' \
   -d '{"game_id":"sneak","build_id":"sneak-web-direct-0.2.0"}'
-# {"player_id":"…","token":"…","display_name":"Guest-…"}
+# {"player_id":"…","token":"…","display_name":null}
+
+curl -X PATCH http://127.0.0.1:8787/v1/games/sneak/me/profile \
+  -H "authorization: Bearer <token>" -H 'content-type: application/json' \
+  -d '{"display_name":"kitty"}'
+# {"display_name":"kitty"}
 
 curl 'http://127.0.0.1:8787/v1/games/sneak/leaderboards?runtime=web'
 ```
