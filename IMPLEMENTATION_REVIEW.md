@@ -1,6 +1,6 @@
 # Sneak and Ah!Steroids integration review
 
-Reviewed 2026-10-19. Changes were prepared locally; check Git history for commit status.
+Reviewed 2026-10-19. Presentation findings below are historical; see `UI_SIMPLIFICATION_PLAN.md` for the 2026-10-23 simplified UI. Check Git history for commit status.
 
 ## Scope and ranking policy
 

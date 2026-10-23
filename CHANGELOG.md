@@ -4,6 +4,9 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 
 ## Unreleased
 
+- 2026-10-23: Add a shared automatic-play helper with a two-second startup deadline and cancellation/late-reply protection.
+- Share pending credential registration across overlapping starts so a retry cannot create a competing installation identity.
+
 - 2026-10-19: Register itch builds for Sneak and Ah!Steroids on Web, Windows, and Android; preserve shared platform boards and optional provider filters.
 - Reject insecure client URLs before sending credentials; vendor public issuer roots for native certificate verification.
 

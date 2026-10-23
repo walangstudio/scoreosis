@@ -1,7 +1,7 @@
 # Sneak and Ah!Steroids - simpler scores UI
 
 Date: 2026-10-22
-Status: Implementation plan. No game UI or gameplay changes are included in this document.
+Status: Game UI and automatic-play flow implemented locally on 2026-10-23. Player naming remains the separate Scoreosis API/client handoff; production connection and deployment are not included.
 
 This is the latest product direction. It supersedes earlier requirements to expose Country, Achievements, separate Play/Ranked modes, and verification status in either game. Keep the player-chosen-name requirements in `NAMED_PLAYERS_HANDOFF.md`.
 

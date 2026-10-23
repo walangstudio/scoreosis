@@ -339,6 +339,32 @@ test("credentials never leave over non-local plain HTTP", function()
 	eq(#f.requests, 1, "debug mode must not allow remote plain HTTP")
 end)
 
+test("overlapping plays share one pending installation credential", function()
+	local f = fake()
+	local client = client_mod.new(f.platform, "https://x", "toy", "toy-web-itch_io-1")
+	local answers = 0
+	for _ = 1, 2 do client:ensure_guest(function(ok, err) assert(ok and err == nil); answers = answers + 1 end) end
+	eq(#f.requests, 1, "a retry must not register a second identity")
+	f.answer(201, {token = "one-token"})
+	eq(answers, 2)
+	eq(f.token, "one-token")
+	client:ensure_guest(function(ok) assert(ok); answers = answers + 1 end)
+	eq(answers, 3)
+	eq(#f.requests, 0)
+end)
+
+test("failed shared registration can be retried", function()
+	local f = fake()
+	local client = client_mod.new(f.platform, "https://x", "toy", "toy-web-itch_io-1")
+	local answers = 0
+	for _ = 1, 2 do client:ensure_guest(function(ok) assert(not ok); answers = answers + 1 end) end
+	f.answer(503, {error = {code = "capacity"}})
+	eq(answers, 2)
+	client:ensure_guest(function(ok) assert(ok) end)
+	f.answer(201, {token = "retry-token"})
+	eq(f.token, "retry-token")
+end)
+
 test("codec round-trips awkward numbers exactly", function()
 	local values = { 0.1, -0.0, 1e300, -2.5e-310, 2 ^ 53 + 2, 1 / 3, -7, 0 }
 	for _, v in ipairs(values) do

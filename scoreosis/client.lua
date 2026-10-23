@@ -65,14 +65,20 @@ function M:ensure_guest(callback)
 		callback(true)
 		return
 	end
+	if self.registering then
+		self.registering[#self.registering + 1] = callback
+		return
+	end
+	self.registering = {callback}
 	self:call("POST", "/v1/guests", { game_id = self.game_id, build_id = self.build_id }, function(ok, body)
-		if ok and type(body.token) == "string" then
+		local waiting = self.registering
+		self.registering = nil
+		local created = ok and type(body.token) == "string"
+		if created then
 			self.token = body.token
 			self.platform.save_token(body.token)
-			callback(true)
-		else
-			callback(false, body)
 		end
+		for _, done in ipairs(waiting) do done(created, not created and body or nil) end
 	end)
 end
 

@@ -64,7 +64,7 @@ The client requires HTTPS. Debug Defold builds may use HTTP on `127.0.0.1:<port>
 
 Both reference games default to `itch_io` for Web, Windows, and Android. Builds keep runtime and provider separate. A game's Web board uses `runtime=web` with no channel filter, sharing one ranking across Web providers. An explicit `channel=itch_io` narrows it to itch scores without mixing runtimes.
 
-`client:platform_best(callback)` reads the platform record without creating a guest or sending credentials. Reference games show it as WEB BEST, WINDOWS BEST, or the relevant runtime. Offline fallback is labeled LOCAL BEST; personal records remain in Local Top 10. The public record follows the leaderboard's 30-second cache.
+`client:platform_best(callback)` reads the platform record without creating a guest or sending credentials. Reference games label it TOP SCORE. A missing record shows `...`; personal records remain in Local. The score UI exposes only Global/Local, with the current runtime applied in the request. The public record follows the leaderboard's 30-second cache.
 
 ## 4. Pack and register
 
@@ -104,3 +104,7 @@ A ruleset is the hash of every packed module. Any change makes a new ruleset. Pu
 ## 6. Modes
 
 A game with levels or tracks exports `M.modes`, an ordered list of ids. The run start body must name one; results and bests key the board as `<board>/<mode>`, and `?mode=` picks the leaderboard. `session.new(client, game, now, mode)` sends it and passes it to `game.new(seed, mode)`. A game may also keep animating its sim after the terminal tick (an outro): the session checksums the finishing state.
+
+## Automatic play
+
+`scoreosis.autoplay.start(session, timer, callback)` attempts a session and calls back with the active session, or nil when startup fails or exceeds two seconds. It returns a cancellation function for leaving the pending screen. Failed, timed-out, and cancelled starts are abandoned; late replies cannot replace local play. Both games use this path for Play and Retry, keeping validation states out of their visible UI. Local results are never promoted to Global. Overlapping starts share a pending credential registration; retrying does not create a competing installation identity.
