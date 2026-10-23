@@ -1,5 +1,7 @@
 # Scoreosis implementation handoff for Claude
 
+For environment testing, read [STAGING_CONNECTIVITY_REVIEW.md](STAGING_CONNECTIVITY_REVIEW.md). Both supplied API hosts returned Cloudflare error 1010 on 2026-10-23. Ah!Steroids has an explicit staging-targeted preview build; score submission is still blocked. All live test identities must use `kitty`.
+
 ## Latest product direction - simpler game UI
 
 Read [UI_SIMPLIFICATION_PLAN.md](UI_SIMPLIFICATION_PLAN.md) first. The user's latest instruction is one automatic Play flow, only Global and Local scores, no visible verification labels, and no achievements UI for this release. Global stays separated by runtime platform, as explicitly confirmed. This supersedes conflicting presentation requirements below; preserve server validation and saved progress.
