@@ -68,3 +68,4 @@ Read docs/ARCHITECTURE.md first. Request path: Worker validates and routes -> pl
 - Size the VM's Wasm stack and initial memory explicitly in `tools/build-vm.mjs`; zig's 16 MiB default stack made every loaded verifier 17 MiB.
 - Anchor a pause at the later of the last input and the last resume (`resumed_at`); anchoring at the last input rejected a second pause after a resume and double-counted paused time.
 - A new column on an existing Durable Object table goes in `ADDED_COLUMNS` too; `CREATE TABLE IF NOT EXISTS` never adds it to objects created earlier.
+- Give back a throttle slot claimed in Durable Object storage when the D1 write it guards fails; a burned slot locked a first-time namer out after a transient error.

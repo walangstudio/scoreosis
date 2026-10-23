@@ -18,6 +18,24 @@
       "ruleset": "7411b66ea8266106",
       "runtime": "windows",
       "channel": "direct"
+    },
+    {
+      "id": "sneak-web-itch_io-0.2.0",
+      "ruleset": "7411b66ea8266106",
+      "runtime": "web",
+      "channel": "itch_io"
+    },
+    {
+      "id": "sneak-windows-itch_io-0.2.0",
+      "ruleset": "7411b66ea8266106",
+      "runtime": "windows",
+      "channel": "itch_io"
+    },
+    {
+      "id": "sneak-android-itch_io-0.2.0",
+      "ruleset": "7411b66ea8266106",
+      "runtime": "android",
+      "channel": "itch_io"
     }
   ]
 }

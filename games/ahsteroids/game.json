@@ -18,6 +18,24 @@
       "ruleset": "96cf239671ce4856",
       "runtime": "windows",
       "channel": "direct"
+    },
+    {
+      "id": "ahsteroids-web-itch_io-0.1.0",
+      "ruleset": "96cf239671ce4856",
+      "runtime": "web",
+      "channel": "itch_io"
+    },
+    {
+      "id": "ahsteroids-windows-itch_io-0.1.0",
+      "ruleset": "96cf239671ce4856",
+      "runtime": "windows",
+      "channel": "itch_io"
+    },
+    {
+      "id": "ahsteroids-android-itch_io-0.1.0",
+      "ruleset": "96cf239671ce4856",
+      "runtime": "android",
+      "channel": "itch_io"
     }
   ]
 }

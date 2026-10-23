@@ -33,6 +33,23 @@ describe('public API', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('registers itch releases for both games and every shipped runtime', async () => {
+    for (const [game, version] of [
+      ['sneak', '0.2.0'],
+      ['ahsteroids', '0.1.0'],
+    ]) {
+      for (const runtime of ['web', 'windows', 'android']) {
+        const registered = await api('/v1/guests', {
+          body: { game_id: game, build_id: `${game}-${runtime}-itch_io-${version}` },
+          headers: {
+            'cf-connecting-ip': `198.51.100.${runtime === 'web' ? 21 : runtime === 'windows' ? 22 : 23}`,
+          },
+        });
+        expect(registered.status, `${game}/${runtime}`).toBe(201);
+      }
+    }
+  });
+
   it('allows CORS only for configured origins', async () => {
     const res = await SELF.fetch(`${BASE}/v1/health`, {
       headers: { origin: 'https://evil.example' },

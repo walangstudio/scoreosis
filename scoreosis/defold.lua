@@ -1,11 +1,26 @@
 -- Defold bindings for scoreosis.client. The guest token lives in its own save
 -- file so clearing game settings does not lose the online identity.
 local M = {}
+local tls_ready
 
 function M.platform(game_id)
 	local path = sys.get_save_file("scoreosis", game_id .. ".token")
+	local web = sys.get_sys_info().system_name == "HTML5"
+	if not web and tls_ready == nil then
+		tls_ready = false
+		if scoreosis_tls then
+			local pem = sys.load_resource("/scoreosis/cacert.pem")
+			tls_ready = pem and scoreosis_tls.configure(pem) or false
+		end
+	end
+	local ready = web or tls_ready
 	return {
+		allow_http = sys.get_engine_info().is_debug,
 		request = function(url, method, headers, body, callback)
+			if not ready and url:match("^https://") then
+				callback(0, json.encode({error = {code = "tls_unavailable", message = "Certificate verification unavailable"}}))
+				return
+			end
 			http.request(url, method, function(_, _, response)
 				callback(response.status or 0, response.response)
 			end, headers, body, { timeout = 10 })

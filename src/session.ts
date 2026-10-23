@@ -30,6 +30,7 @@ const START_GRACE_MS = 5_000;
 const CHECKPOINT_EVERY_TICKS = 600;
 const TRACE_RETENTION_MS = 7 * 24 * 3_600_000;
 const MAX_BACKOFF_MS = 3_600_000;
+const RENAME_INTERVAL_MS = 60_000;
 const PUBLISH_BACKOFF_MS = [5_000, 30_000, 120_000, 600_000];
 /** The hard cap stops one runaway tick; normal work is bounded by VERIFY_INSTRUCTIONS. */
 const VM_LIMITS = { memory: 48 << 20, instructions: 50_000_000 };
@@ -447,6 +448,62 @@ export class PlayerSession extends DurableObject<Env> {
     secretHash: string,
   ): Promise<{ ok: true; achievements: Awaited<ReturnType<PlayerSession['catalog']>> } | Failure> {
     return this.guard(secretHash, async () => ({ achievements: await this.catalog() }));
+  }
+
+  // --- profile ----------------------------------------------------------------
+
+  async profile(
+    secretHash: string,
+  ): Promise<{ ok: true; profile: { display_name: string | null } } | Failure> {
+    return this.guard(secretHash, async () => {
+      const { game, player } = this.identity();
+      const row = await this.env.DB.prepare(
+        'SELECT display_name, name_set_at FROM players WHERE game_id = ? AND player_id = ?',
+      )
+        .bind(game.id, player)
+        .first<{ display_name: string; name_set_at: number | null }>();
+      return { profile: { display_name: row?.name_set_at == null ? null : row.display_name } };
+    });
+  }
+
+  async rename(
+    secretHash: string,
+    name: string,
+  ): Promise<{ ok: true; profile: { display_name: string } } | Failure> {
+    return this.guard(secretHash, async () => {
+      const { game, player } = this.identity();
+      // A retry after a lost reply resends the saved name; answer it without spending the slot.
+      const current = await this.env.DB.prepare(
+        'SELECT display_name FROM players WHERE game_id = ? AND player_id = ? AND name_set_at IS NOT NULL',
+      )
+        .bind(game.id, player)
+        .first<{ display_name: string }>();
+      if (current?.display_name === name) return { profile: { display_name: name } };
+      const now = Date.now();
+      // Read and claim the slot with no await between, so concurrent renames obey the bound.
+      const previous = this.meta('renamed_at');
+      if (now - Number(previous ?? Number.NEGATIVE_INFINITY) < RENAME_INTERVAL_MS)
+        throw new ApiError('rate_limited', 'name changed recently; retry later');
+      this.sql.exec(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('renamed_at', ?)",
+        String(now),
+      );
+      try {
+        const { meta } = await this.env.DB.prepare(
+          'UPDATE players SET display_name = ?, name_set_at = ? WHERE game_id = ? AND player_id = ?',
+        )
+          .bind(name, now, game.id, player)
+          .run();
+        if (meta.changes !== 1) throw new ApiError('internal', 'player row missing');
+      } catch (error) {
+        // Nothing changed: give the slot back so the player can retry at once.
+        if (previous === undefined) this.sql.exec("DELETE FROM meta WHERE key = 'renamed_at'");
+        else this.sql.exec("UPDATE meta SET value = ? WHERE key = 'renamed_at'", previous);
+        throw error;
+      }
+      log('player_renamed', { game: game.id });
+      return { profile: { display_name: name } };
+    });
   }
 
   // --- verification ---------------------------------------------------------

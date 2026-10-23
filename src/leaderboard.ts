@@ -77,13 +77,13 @@ export type BoardFilter = {
 export type BoardEntry = { rank: number; player_id: string; name: string; score: number };
 
 // Each player's best within the filter, earliest accepted on ties; unknown
-// country ('') never matches a country filter.
+// country ('') never matches a country filter. Unnamed players are left out.
 const BEST = `
   WITH candidates AS (
     SELECT b.player_id, b.score, b.accepted_at, b.run_id,
       row_number() OVER (PARTITION BY b.player_id ORDER BY b.score DESC, b.accepted_at, b.run_id) AS n
     FROM bests b JOIN players p ON p.game_id = b.game_id AND p.player_id = b.player_id
-    WHERE b.game_id = ?1 AND b.board = ?2 AND p.hidden = 0
+    WHERE b.game_id = ?1 AND b.board = ?2 AND p.hidden = 0 AND p.name_set_at IS NOT NULL
       AND (?3 IS NULL OR b.country = ?3) AND (?4 IS NULL OR b.runtime = ?4) AND (?5 IS NULL OR b.channel = ?5)
   ),
   best AS (SELECT player_id, score, accepted_at, run_id FROM candidates WHERE n = 1)`;

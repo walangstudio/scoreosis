@@ -10,7 +10,7 @@ let n = 0;
 async function player(name: string): Promise<string> {
   const id = (++n).toString(16).padStart(32, '0');
   await env.DB.prepare(
-    "INSERT INTO players (game_id, player_id, display_name, created_at) VALUES ('ahsteroids', ?, ?, 0)",
+    "INSERT INTO players (game_id, player_id, display_name, created_at, name_set_at) VALUES ('ahsteroids', ?, ?, 0, 0)",
   )
     .bind(id, name)
     .run();
@@ -105,6 +105,19 @@ describe('leaderboards', () => {
     for (const q of ['?runtime=ps5', '?channel=epic', '?country=ph', '?board=nope', '?page=-1']) {
       expect((await api(`/v1/games/ahsteroids/leaderboards${q}`)).status, q).toBe(400);
     }
+  });
+
+  it('shares the Web board across providers and preserves each provider best', async () => {
+    const user = await player('web-provider-player');
+    await result(user, 100, { country: 'CA', runtime: 'web', channel: 'itch_io' });
+    await result(user, 200, { country: 'CA', runtime: 'web', channel: 'steam' });
+    await result(user, 500, { country: 'CA', runtime: 'windows', channel: 'itch_io' });
+    expect((await board('?country=CA&runtime=web')).entries).toEqual([
+      { rank: 1, name: 'web-provider-player', score: 200 },
+    ]);
+    expect((await board('?country=CA&runtime=web&channel=itch_io')).entries).toEqual([
+      { rank: 1, name: 'web-provider-player', score: 100 },
+    ]);
   });
 
   it('hides banned players and recomputes bests after suppression', async () => {

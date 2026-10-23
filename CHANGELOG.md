@@ -2,6 +2,26 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
+## [0.2.0] - 2026-10-23
+
+### Added
+
+- Players choose their public name: `GET` and `PATCH /v1/games/:game/me/profile`. 2-16 ASCII letters, digits and single spaces; names starting with `guest` are reserved; one change per minute.
+- Lua client: `client:profile` and `client:set_name`.
+- Shared automatic-play helper with a two-second startup deadline and cancellation/late-reply protection.
+- itch builds for Sneak and Ah!Steroids on Web, Windows and Android; shared platform boards keep optional provider filters.
+
+### Changed
+
+- New guests get no generated `Guest-…` name; `POST /v1/guests` returns `display_name: null`.
+- Unnamed players stay off every board, take no rank and are absent from the platform record. Their verified results and achievements are kept and rank as soon as they choose a name. Players created before 0.2.0 start unnamed (D1 migration `0002`).
+- Browser CORS allows `PATCH`.
+- Lua client shares a pending guest registration across overlapping starts, so a retry cannot create a second identity.
+
+### Security
+
+- Lua client rejects non-HTTPS URLs before sending credentials; native builds verify certificates against vendored public roots.
+
 ## [0.1.1] - 2026-10-21
 
 ### Fixed

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Player, api, useClock } from './client.js';
+import { Player, api, nameTheGuest, useClock } from './client.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -9,7 +9,7 @@ describe('verified ranked run', () => {
   it('plays a full Ah!Steroids run and publishes the server-verified result', async () => {
     const clock = useClock();
     const player = await Player.create(12345);
-    const start = await player.start();
+    const start = await player.start('ahsteroids-web-itch_io-0.1.0');
     expect(start.status).toBe(201);
     expect(start.body).toMatchObject({ tick_rate: 60, board: 'classic' });
 
@@ -26,11 +26,19 @@ describe('verified ranked run', () => {
     expect(result.body.facts).toEqual(clientFacts);
     expect(result.body.published).toBe(true);
 
-    const board = await api('/v1/games/ahsteroids/leaderboards?me=1', { token: player.token });
+    // Verified but unnamed: stored, not ranked.
+    const unnamed = await api('/v1/games/ahsteroids/leaderboards?runtime=web&me=1', {
+      token: player.token,
+    });
+    expect(unnamed.body.entries).toEqual([]);
+    expect(unnamed.body.me).toBeNull();
+    await nameTheGuest('ahsteroids', player.token);
+
+    const board = await api('/v1/games/ahsteroids/leaderboards?runtime=web&channel=itch_io&me=1', {
+      token: player.token,
+    });
     expect(board.status).toBe(200);
-    expect(board.body.entries).toEqual([
-      { rank: 1, name: expect.stringMatching(/^Guest-/), score: clientFacts.score },
-    ]);
+    expect(board.body.entries).toEqual([{ rank: 1, name: 'kitty', score: clientFacts.score }]);
     expect(board.body.me).toEqual({ rank: 1, score: clientFacts.score });
 
     const achievements = await api('/v1/games/ahsteroids/me/achievements', { token: player.token });
@@ -42,11 +50,12 @@ describe('verified ranked run', () => {
       target: 100,
       percent: clientFacts.kills,
     });
-  });
+  }, 60_000);
 
   it('verifies an ebakuw8 stage run on that stage board only', async () => {
     const clock = useClock();
     const player = await Player.create(4242, undefined, 'ebakuw8');
+    await nameTheGuest('ebakuw8', player.token);
     const start = await player.start('ebakuw8-web-direct-0.3.0', 'diner');
     expect(start.status).toBe(201);
     expect(start.body).toMatchObject({ board: 'stages', mode: 'diner' });
@@ -76,7 +85,7 @@ describe('verified ranked run', () => {
   it('verifies a Sneak run on its own board and achievements', async () => {
     const clock = useClock();
     const player = await Player.create(777, undefined, 'sneak');
-    expect((await player.start()).status).toBe(201);
+    expect((await player.start('sneak-web-itch_io-0.2.0')).status).toBe(201);
 
     const result = await player.playToEnd(clock);
     expect(result.body.status).toBe('finished');
@@ -90,7 +99,10 @@ describe('verified ranked run', () => {
     expect(result.body.facts).toEqual(clientFacts);
     expect(clientFacts).toHaveProperty('food');
 
-    const board = await api('/v1/games/sneak/leaderboards?me=1', { token: player.token });
+    await nameTheGuest('sneak', player.token);
+    const board = await api('/v1/games/sneak/leaderboards?runtime=web&channel=itch_io&me=1', {
+      token: player.token,
+    });
     expect(board.body.me).toEqual({ rank: 1, score: clientFacts.score });
     const achievements = await api('/v1/games/sneak/me/achievements', { token: player.token });
     expect(achievements.body.achievements).toHaveLength(12);
