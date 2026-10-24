@@ -47,6 +47,8 @@ Keep each token in your password manager. Admin routes refuse every request whil
 
 Browser builds call the API cross-origin. Set `ALLOWED_ORIGINS` per environment in `wrangler.jsonc`, comma separated, for example `"https://html-classic.itch.zone,https://games.example.com"`. Native builds send no origin and need no entry.
 
+Staging includes `http://127.0.0.1:8774`, `http://127.0.0.1:8775`, their `localhost` equivalents, and `https://html-classic.itch.zone`. Production remains restricted to itch. Add LAN/device preview origins explicitly; do not use `*`. Deploy the staging configuration before testing these browser origins. A local `.dev.vars` value overrides the local allowlist.
+
 ## 6. Deploy
 
 ```sh

@@ -35,7 +35,7 @@
       "vars": {
         "VERIFY_INSTRUCTIONS": "1000000",
         "MAX_RUNS_PER_DAY": "500",
-        "ALLOWED_ORIGINS": ""
+        "ALLOWED_ORIGINS": "http://127.0.0.1:8774,http://127.0.0.1:8775,http://localhost:8774,http://localhost:8775,https://html-classic.itch.zone"
       },
       "durable_objects": { "bindings": [{ "name": "PLAYERS", "class_name": "PlayerSession" }] },
       "d1_databases": [

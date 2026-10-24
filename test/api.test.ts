@@ -51,6 +51,20 @@ describe('public API', () => {
   });
 
   it('allows CORS only for configured origins', async () => {
+    for (const origin of ['http://127.0.0.1:8774', 'http://localhost:8775']) {
+      const board = await SELF.fetch(`${BASE}/v1/games/sneak/leaderboards?runtime=web`, {
+        headers: { origin },
+      });
+      expect(board.status).toBe(200);
+      expect(board.headers.get('access-control-allow-origin')).toBe(origin);
+      const preflight = await SELF.fetch(`${BASE}/v1/guests`, {
+        method: 'OPTIONS',
+        headers: { origin, 'access-control-request-method': 'POST' },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(preflight.headers.get('access-control-allow-headers')).toContain('authorization');
+    }
     const res = await SELF.fetch(`${BASE}/v1/health`, {
       headers: { origin: 'https://evil.example' },
     });

@@ -10,6 +10,7 @@ export default defineConfig({
           TEST_MIGRATIONS: await readD1Migrations('./migrations'),
           ADMIN_TOKEN: 'test-admin-token-0123456789abcdef0123456789',
           MAX_RUNS_PER_DAY: '1000',
+          ALLOWED_ORIGINS: 'http://127.0.0.1:8774,http://localhost:8775',
         },
       },
     })),

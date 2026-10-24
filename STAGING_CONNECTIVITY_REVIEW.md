@@ -1,5 +1,15 @@
 # Staging connection check
 
+## 2026-10-24 update
+
+The staging Sneak Web leaderboard now returns HTTP 200 with an empty entries list. An ordinary request carrying `Origin: http://127.0.0.1:8774` received no `access-control-allow-origin`, which prevents browser reads even though native requests can succeed.
+
+The prepared staging configuration allows exact localhost/127.0.0.1 origins on ports 8774 and 8775, plus itch. Production origins are unchanged. Local API tests cover allowed-origin leaderboard reads, preflights, and rejection of an unlisted origin. No live scores or players were created.
+
+Wrangler 4.145.0 reports an expired login that cannot refresh non-interactively. The live CORS update remains unapplied until Cloudflare access is restored. Both games now select staging for debug/editor builds and production in all release scripts; non-production token storage is separate from existing production identities.
+
+The report below preserves the earlier access failure for context.
+
 Date: 2026-10-23
 Result: Edge access blocks API tests. No players, runs, or scores were created.
 

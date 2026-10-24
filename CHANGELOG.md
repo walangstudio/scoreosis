@@ -2,6 +2,10 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
+## Unreleased
+
+- 2026-10-24: Allow the two local game previews and itch in staging CORS. Test browser leaderboard reads and authenticated-request preflights while rejecting unlisted origins.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added
