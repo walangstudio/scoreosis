@@ -4,9 +4,11 @@
 
 The staging Sneak Web leaderboard now returns HTTP 200 with an empty entries list. An ordinary request carrying `Origin: http://127.0.0.1:8774` received no `access-control-allow-origin`, which prevents browser reads even though native requests can succeed.
 
-The prepared staging configuration allows exact localhost/127.0.0.1 origins on ports 8774 and 8775, plus itch. Production origins are unchanged. Local API tests cover allowed-origin leaderboard reads, preflights, and rejection of an unlisted origin. No live scores or players were created.
+The staging configuration now allows exact localhost/127.0.0.1 origins on ports 8774 and 8775, plus itch. Production origins are unchanged. Local API tests cover allowed-origin leaderboard reads, preflights, and rejection of an unlisted origin. No live scores or players were created.
 
-Wrangler 4.145.0 reports an expired login that cannot refresh non-interactively. The live CORS update remains unapplied until Cloudflare access is restored. Both games now select staging for debug/editor builds and production in all release scripts; non-production token storage is separate from existing production identities.
+After the user restored Cloudflare login, Wrangler 4.145.0 deployed staging version `6e30a40e-91dd-4a4b-92b1-41d7a186528b`. Default curl requests verified HTTP 200 and the exact allow-origin header for Sneak on port 8774 and Ah!Steroids on port 8775. Both Web boards contain zero entries. POST preflights allow authorization/content-type headers. An unlisted staging origin and localhost against production receive no CORS permission. A Python urllib request received HTTP 403; that client was not disguised or used to submit data.
+
+Both games now select staging for debug/editor builds and production in all release scripts; compiled Web configs were checked in each mode. Non-production token storage is separate from existing production identities. The game previews were rebuilt, but a final browser screenshot check remains unavailable because the UI automation surfaces are disconnected. The game-side chosen-name flow remains separate work; no unnamed live test identities were created.
 
 The report below preserves the earlier access failure for context.
 
