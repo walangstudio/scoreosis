@@ -51,7 +51,12 @@ describe('public API', () => {
   });
 
   it('allows CORS only for configured origins', async () => {
-    for (const origin of ['http://127.0.0.1:8774', 'http://localhost:8775']) {
+    for (const origin of [
+      'http://127.0.0.1:8774',
+      'http://localhost:8775',
+      'http://127.0.0.1:8097',
+      'http://localhost:8097',
+    ]) {
       const board = await SELF.fetch(`${BASE}/v1/games/sneak/leaderboards?runtime=web`, {
         headers: { origin },
       });
