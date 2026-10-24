@@ -158,7 +158,7 @@ describe('player profile', () => {
     expect(best.body.entries[0]).toEqual({ rank: 1, name: 'kitty', score: 500 });
 
     expect((await rename(unnamed, { display_name: 'Late Cat' })).status).toBe(200);
-    const after = await api('/v1/games/ahsteroids/leaderboards?country=NZ&channel=itch_io&me=1', {
+    const after = await api('/v1/games/ahsteroids/leaderboards?country=NZ&me=1', {
       token: unnamed,
     });
     expect(after.body.entries).toEqual([
@@ -182,6 +182,20 @@ describe('player profile', () => {
     expect(failed.status).toBe(500);
     expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);
     expect((await profile(token)).body).toEqual({ display_name: 'kitty' });
+  });
+
+  it('shows a verified two-point score immediately after the name is chosen', async () => {
+    const token = await guest();
+    await verified(token, 2, 'KE');
+    const path = '/v1/games/ahsteroids/leaderboards?country=KE&runtime=web';
+    expect((await api(path)).body.entries).toEqual([]);
+    expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);
+    const board = await api(`${path}&me=1`, { token });
+    expect(board.status).toBe(200);
+    expect(board.body.entries).toEqual([{ rank: 1, name: 'kitty', score: 2 }]);
+    expect(board.body.me).toEqual({ rank: 1, score: 2 });
+    expect(board.headers.get('cache-control')).toBe('private, no-store');
+    expect((await api(`${path}&me=1`)).status).toBe(401);
   });
 
   it('accepts a retry of the current name without spending the rename slot', async () => {

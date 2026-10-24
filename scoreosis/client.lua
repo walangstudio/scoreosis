@@ -9,7 +9,7 @@
 local M = {}
 M.__index = M
 
-function M.new(platform, base_url, game_id, build_id)
+function M.new(platform, base_url, game_id, build_id, display_name)
 	return setmetatable({
 		platform = platform,
 		base_url = base_url,
@@ -18,6 +18,7 @@ function M.new(platform, base_url, game_id, build_id)
 		-- Build ids are <game>-<runtime>-<channel>-<version>.
 		runtime = build_id:match("^[^-]+%-([^-]+)%-[^-]+%-.+$"),
 		token = platform.load_token(),
+		display_name = display_name,
 	}, M)
 end
 
@@ -85,15 +86,21 @@ end
 -- filters: { board, mode, country, runtime, channel, page, me }. Platforms never
 -- mix: runtime defaults to this build's own.
 function M:leaderboard(filters, callback)
+	if self.display_name and (self.synced_name ~= self.display_name or self.synced_token ~= self.token) then
+		return self:ensure_player(function(ok, err)
+			if ok then self:leaderboard(filters, callback) else callback(false, err) end
+		end)
+	end
 	local query = {}
 	for _, key in ipairs({ "board", "mode", "country", "runtime", "channel", "page" }) do
 		local value = filters[key]
 		if key == "runtime" and value == nil then value = self.runtime end
 		if value ~= nil then query[#query + 1] = key .. "=" .. tostring(value) end
 	end
-	if filters.me and self.token then query[#query + 1] = "me=1" end
+	local personal = (filters.me or self.display_name ~= nil) and self.token ~= nil
+	if personal then query[#query + 1] = "me=1" end
 	local path = self:game_path("/leaderboards") .. (#query > 0 and "?" .. table.concat(query, "&") or "")
-	self:call("GET", path, nil, callback, filters.me and self.token ~= nil)
+	self:call("GET", path, nil, callback, personal)
 end
 
 function M:achievements(callback)
@@ -109,6 +116,31 @@ end
 -- callback(ok, { display_name = saved }) or (false, { code = "bad_request" | "rate_limited" | ... }).
 function M:set_name(name, callback)
 	self:call("PATCH", self:game_path("/me/profile"), { display_name = name }, callback, true)
+end
+
+function M:ensure_player(callback)
+	self:ensure_guest(function(ok, err)
+		if not ok then return callback(false, err) end
+		local name, token = self.display_name, self.token
+		if not name or self.synced_name == name and self.synced_token == token then return callback(true) end
+		if self.naming then
+			self.naming[#self.naming + 1] = callback
+			return
+		end
+		self.naming = {callback}
+		self:set_name(name, function(saved, body)
+			if saved and (type(body.display_name) ~= "string" or body.display_name == "") then
+				saved, body = false, {code="invalid_response",message="Name was not confirmed",status=0}
+			end
+			local waiting = self.naming
+			self.naming = nil
+			if saved then self.synced_name, self.synced_token = name, token end
+			for _, done in ipairs(waiting) do
+				if saved and (self.display_name ~= name or self.token ~= token) then self:ensure_player(done)
+				else done(saved, body) end
+			end
+		end)
+	end)
 end
 
 function M:platform_best(callback)

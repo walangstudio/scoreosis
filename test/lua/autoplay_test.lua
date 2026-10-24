@@ -8,7 +8,8 @@ local function setup()
 	}
 	f.clock = {
 		delay = function(seconds, repeating, done)
-			assert(seconds == 2 and not repeating)
+			assert(seconds <= 10 and not repeating)
+			f.seconds = seconds
 			f.timeout = done
 			return 42
 		end,
@@ -37,8 +38,13 @@ f.reply(true)
 assert(#f.results == 1, "a late start must not replace local play")
 
 f = setup()
+if f.seconds <= 4 then f.timeout() end
+f.reply(true)
+assert(f.results[1] == f.session, "normal multi-request startup must not become local after two seconds")
+
+f = setup()
 f.cancel()
 f.reply(true)
 f.timeout()
 assert(#f.results == 0 and f.abandoned == 1, "leaving a pending play must not start a game")
-print("6 automatic play checks, 0 failures")
+print("7 automatic play checks, 0 failures")

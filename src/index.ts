@@ -154,6 +154,11 @@ route(
     if (!Number.isInteger(page) || page < 0 || page >= MAX_RANK / PAGE_SIZE) {
       throw new ApiError('bad_request', `page must be 0..${MAX_RANK / PAGE_SIZE - 1}`);
     }
+    const auth = q.get('me') === '1' ? await authenticate(request, env, game.id) : null;
+    if (auth) {
+      const checked = await auth.session.check(auth.secretHash);
+      if (!checked.ok) return reply(checked, () => null);
+    }
     const cacheKey = new Request(
       `${url.origin}/v1/games/${game.id}/leaderboards?${new URLSearchParams({
         board,
@@ -165,7 +170,7 @@ route(
       })}`,
     );
     const cache = caches.default;
-    const cached = await cache.match(cacheKey);
+    const cached = auth ? undefined : await cache.match(cacheKey);
     let body = cached ? await cached.json<Record<string, unknown>>() : undefined;
     if (!body) {
       const entries = auto && !filter.country ? [] : await leaderboardPage(env.DB, filter, page);
@@ -178,18 +183,16 @@ route(
         page_size: PAGE_SIZE,
         entries: entries.map((e) => ({ rank: e.rank, name: e.name, score: e.score })),
       };
-      exec.waitUntil(
-        cache.put(
-          cacheKey,
-          json(body, 200, { 'cache-control': `public, max-age=${BOARD_CACHE_SECONDS}` }),
-        ),
-      );
+      if (!auth)
+        exec.waitUntil(
+          cache.put(
+            cacheKey,
+            json(body, 200, { 'cache-control': `public, max-age=${BOARD_CACHE_SECONDS}` }),
+          ),
+        );
     }
-    if (q.get('me') !== '1')
+    if (!auth)
       return json(body, 200, { 'cache-control': `${visibility}, max-age=${BOARD_CACHE_SECONDS}` });
-    const auth = await authenticate(request, env, game.id);
-    const checked = await auth.session.check(auth.secretHash);
-    if (!checked.ok) return reply(checked, () => null);
     const me = auto && !filter.country ? null : await playerRank(env.DB, filter, auth.player);
     return json({ ...body, me }, 200, {
       'cache-control': 'private, no-store',

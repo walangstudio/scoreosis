@@ -45,7 +45,7 @@ end
 
 -- Starts a ranked run; callback(ok) fires once the simulation exists.
 function M:start(callback)
-	self.client:ensure_guest(function(ok, err)
+	self.client:ensure_player(function(ok, err)
 		if self.status ~= "starting" then return callback(false) end
 		if not ok then
 			go_local(self, err and err.code or "network")
@@ -236,7 +236,7 @@ end
 
 function M:poll_finish()
 	self.client:call("POST", run_path(self, "finish"), { tick = self.tick }, function(ok, res)
-		if ok and res.status == "verifying" then
+		if ok and (res.status == "verifying" or res.status == "finished" and res.published == false) then
 			self.retry_at = self.now() + (res.retry_after_ms or 1000) / 1000
 			return
 		end
