@@ -146,7 +146,7 @@ describe('player profile', () => {
     expect((await profile(token)).body).toEqual({ display_name: 'four' });
   });
 
-  it('keeps an unnamed player off the board until they choose a name', async () => {
+  it('does not attach a profile name to earlier unnamed results', async () => {
     const unnamed = await guest();
     const named = await guest();
     expect((await rename(named, { display_name: 'test-001' })).status).toBe(200);
@@ -165,11 +165,8 @@ describe('player profile', () => {
     const after = await api('/v1/games/ahsteroids/leaderboards?country=NZ&me=1', {
       token: unnamed,
     });
-    expect(after.body.entries).toEqual([
-      { rank: 1, name: 'Late Cat', score: 900 },
-      { rank: 2, name: 'test-001', score: 500 },
-    ]);
-    expect(after.body.me).toEqual({ rank: 1, score: 900 });
+    expect(after.body.entries).toEqual([{ rank: 1, name: 'test-001', score: 500 }]);
+    expect(after.body.me).toBeNull();
   });
 
   it('frees the rename slot when the database write fails', async () => {
@@ -188,12 +185,12 @@ describe('player profile', () => {
     expect((await profile(token)).body).toEqual({ display_name: 'test-001' });
   });
 
-  it('shows a verified two-point score immediately after the name is chosen', async () => {
+  it('shows a verified two-point legacy score using the name at publication', async () => {
     const token = await guest();
-    await verified(token, 2, 'KE');
     const path = '/v1/games/ahsteroids/leaderboards?country=KE&runtime=web';
     expect((await api(path)).body.entries).toEqual([]);
     expect((await rename(token, { display_name: 'test-001' })).status).toBe(200);
+    await verified(token, 2, 'KE');
     const board = await api(`${path}&me=1`, { token });
     expect(board.status).toBe(200);
     expect(board.body.entries).toEqual([{ rank: 1, name: 'test-001', score: 2 }]);

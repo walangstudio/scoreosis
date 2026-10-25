@@ -34,7 +34,7 @@ Each environment's rate limits need their own `namespace_id`, an integer unique 
 
 ## Cron
 
-`triggers.crons` runs the daily cleanup (`17 3 * * *`, UTC): it prunes accepted results older than 90 days that no personal best references, 500 at a time. [Operations](../OPERATIONS.md#retention) lists everything kept and for how long.
+`triggers.crons` runs the daily cleanup (`17 3 * * *`, UTC): it prunes accepted results older than 90 days, 500 at a time, retaining personal bests and the top 100 named entries per game/board/country/runtime/provider tuple. [Operations](../OPERATIONS.md#retention) lists everything kept and for how long.
 
 ## Fixed limits
 

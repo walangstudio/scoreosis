@@ -4,6 +4,8 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 
 ## Unreleased
 
+- 2026-10-25: Store immutable arcade entry names per verified run. Different names on future runs leave earlier entries unchanged. Persist client submission retries independently of gameplay. Migration 0003 freezes names on existing personal-best records; it does not republish historical non-best runs.
+
 - 2026-10-25: Accept single hyphens between name segments, including test-001. Keep length, character and reserved-name validation.
 
 - 2026-10-25: Exclude zero scores from every leaderboard and personal rank. Positive scores still qualify from one point.

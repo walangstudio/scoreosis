@@ -54,15 +54,16 @@ describe('leaderboards', () => {
     await result(id('fay'), 100);
   });
 
-  it('ranks one personal best per player, ties share a rank in acceptance order', async () => {
+  it('ranks individual entries, ties share a rank in acceptance order', async () => {
     const body = await board();
     expect(body.entries).toEqual([
       { rank: 1, name: 'ana', score: 500 },
       { rank: 2, name: 'ben', score: 400 },
       { rank: 2, name: 'cy', score: 400 },
       { rank: 4, name: 'dee', score: 350 },
-      { rank: 5, name: 'eli', score: 200 },
-      { rank: 6, name: 'fay', score: 100 },
+      { rank: 5, name: 'ana', score: 300 },
+      { rank: 6, name: 'eli', score: 200 },
+      { rank: 7, name: 'fay', score: 100 },
     ]);
   });
 
@@ -114,6 +115,7 @@ describe('leaderboards', () => {
     await result(user, 500, { country: 'CA', runtime: 'windows', channel: 'itch_io' });
     expect((await board('?country=CA&runtime=web')).entries).toEqual([
       { rank: 1, name: 'web-provider-player', score: 200 },
+      { rank: 2, name: 'web-provider-player', score: 100 },
     ]);
     expect((await board('?country=CA&runtime=web&channel=itch_io')).entries).toEqual([
       { rank: 1, name: 'web-provider-player', score: 100 },

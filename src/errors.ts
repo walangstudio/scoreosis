@@ -10,6 +10,7 @@ export type ErrorCode =
   | 'ruleset_disabled'
   | 'run_active'
   | 'run_not_active'
+  | 'entry_locked'
   | 'sequence_conflict'
   | 'timing_rejected'
   | 'run_rejected'
@@ -28,6 +29,7 @@ export const STATUS: Record<ErrorCode, number> = {
   ruleset_disabled: 422,
   run_active: 409,
   run_not_active: 409,
+  entry_locked: 409,
   sequence_conflict: 409,
   timing_rejected: 422,
   run_rejected: 422,

@@ -64,7 +64,7 @@ The client requires HTTPS. Debug Defold builds may use HTTP on `127.0.0.1:<port>
 
 Both reference games default to `itch_io` for Web, Windows, and Android. Builds keep runtime and provider separate. A game's Web board uses `runtime=web` with no channel filter, sharing one ranking across Web providers. An explicit `channel=itch_io` narrows it to itch scores without mixing runtimes.
 
-`client:platform_best(callback)` reads the platform record. Without a saved name, it uses the public leaderboard and its 30-second cache. Pass the saved public name as the fifth argument to `client.new`; named clients synchronize it through `ensure_player` and use authenticated `me=1` reads that bypass shared caching. Reference games expose only Global/Local for the current runtime. An empty Global record shows NONE.
+Set `client.arcade = true` before starting sessions. `client:platform_best(callback)` reads the platform record. Arcade clients with a token use authenticated reads to bypass shared caching, without synchronizing a profile. Reference games expose only Global/Local for the current runtime. An empty Global record shows NONE.
 
 ## 4. Pack and register
 
@@ -99,7 +99,7 @@ A ruleset is the hash of every packed module. Any change makes a new ruleset. Pu
 5. Pause: freeze, flush the partial chunk, `POST pause`. Resume: `POST resume`, then continue from the response.
 6. At the terminal tick, flush and `POST finish` until it leaves `verifying` and `published` is not false.
 7. Any rejection or expiry: keep playing locally, label the run Local only, never resubmit it.
-8. Names: a guest has no public name and stays off every board until it picks one. After the first verified score or a new personal best, if `client:profile` returns no `display_name`, ask for one after the run ends (never mid-run) with submit and cancel; `client:set_name(name, cb)` saves it. Cancelling keeps the result stored and private. Offer the same entry later from a profile or settings screen. Never show a generated Guest name. Show the rule (2-16 letters, digits, spaces, hyphens) and that names are public.
+8. Names: after a positive online run, prompt with the last entered name, still editable. `client:queue_entry(session.run.run_id, name)` saves the choice for this run. Call `client:update_entries(now)` every frame, including menus, to deliver and retry pending entries. Defold persists the queue beside the token. Cancelling leaves the run unnamed. Never call `set_name` or `ensure_player` for arcade submission; earlier entries cannot be edited. Local records keep their own saved names. Names use 2-16 letters, digits, spaces and hyphens.
 9. Leaderboards never mix platforms. `client:leaderboard` defaults `runtime` to the build's own. Games show only that platform: no device or store filter. Show GLOBAL and LOCAL; country views and achievements are hidden in the reference games.
 
 ## 6. Modes

@@ -18,6 +18,8 @@ Repeat with `production`. The leaderboard cache uses the Cache API, which only w
 
 ## Before raising limits
 
+For the arcade-entry rollout, apply migration `0003_arcade_entries.sql` before deploying the Worker, then ship the game clients. The migration freezes the current names on existing personal-best records; it does not rename them or republish historical non-best runs. Previously overwritten names cannot be reconstructed. New clients require the server's `arcade: true` acknowledgment and play locally if the server has not been upgraded.
+
 Run a staging soak with a real client and read Workers Observability:
 
 - CPU per `inputs` request and per alarm (`VERIFY_INSTRUCTIONS` caps verifier work; ~116k instructions per ms).
@@ -52,6 +54,6 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://<host>/v1/admin/gam
 | --- | --- | --- |
 | Raw input traces | 7 days after the run ends | Player object, deleted by its alarm |
 | Checkpoints | Until the run ends | Player object |
-| Accepted results | 90 days, longer while a personal best references them | D1, pruned by the daily cron in batches of 500 |
+| Accepted results | 90 days, longer while a personal best references them or they rank in the top 100 of their game/board/country/runtime/provider tuple | D1, pruned by the daily cron in batches of 500 |
 | Personal bests, achievements, BadgeTrip events | Indefinitely | D1 / player object |
 | Run summaries | Indefinitely | Player object |

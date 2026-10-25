@@ -10,6 +10,7 @@ export type PublishedResult = {
   country: string | null;
   accepted_at: number;
   facts: Record<string, number>;
+  entry_name?: string | null;
 };
 
 export const PAGE_SIZE = 25;
@@ -24,8 +25,9 @@ export async function publishResult(db: D1Database, r: PublishedResult): Promise
   await db.batch([
     db
       .prepare(
-        `INSERT INTO results (run_id, game_id, board, ruleset, player_id, score, runtime, channel, country, accepted_at, facts, suppressed)
+        `INSERT INTO results (run_id, game_id, board, ruleset, player_id, score, runtime, channel, country, accepted_at, facts, entry_name, suppressed)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+           CASE WHEN ?12 THEN ?13 ELSE (SELECT display_name FROM players WHERE game_id = ?2 AND player_id = ?5 AND name_set_at IS NOT NULL) END,
            EXISTS (SELECT 1 FROM suppressed_runs WHERE run_id = ?1)
            OR EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?2 AND ruleset = ?4))
          ON CONFLICT (run_id) DO NOTHING`,
@@ -42,6 +44,8 @@ export async function publishResult(db: D1Database, r: PublishedResult): Promise
         country,
         r.accepted_at,
         JSON.stringify(r.facts),
+        r.entry_name !== undefined ? 1 : 0,
+        r.entry_name ?? null,
       ),
     db
       .prepare(
@@ -76,17 +80,15 @@ export type BoardFilter = {
 
 export type BoardEntry = { rank: number; player_id: string; name: string; score: number };
 
-// Each player's best within the filter, earliest accepted on ties; unknown
-// country ('') never matches a country filter. Unnamed players are left out.
+// Names belong to runs. The player join only enforces moderation.
 const BEST = `
-  WITH candidates AS (
-    SELECT b.player_id, b.score, b.accepted_at, b.run_id,
-      row_number() OVER (PARTITION BY b.player_id ORDER BY b.score DESC, b.accepted_at, b.run_id) AS n
-    FROM bests b JOIN players p ON p.game_id = b.game_id AND p.player_id = b.player_id
-    WHERE b.game_id = ?1 AND b.board = ?2 AND b.score > 0 AND p.hidden = 0 AND p.name_set_at IS NOT NULL
-      AND (?3 IS NULL OR b.country = ?3) AND (?4 IS NULL OR b.runtime = ?4) AND (?5 IS NULL OR b.channel = ?5)
-  ),
-  best AS (SELECT player_id, score, accepted_at, run_id FROM candidates WHERE n = 1)`;
+  WITH best AS (
+    SELECT r.player_id, r.score, r.accepted_at, r.run_id, r.entry_name AS name
+    FROM results r JOIN players p ON p.game_id = r.game_id AND p.player_id = r.player_id
+    WHERE r.game_id = ?1 AND r.board = ?2 AND r.score > 0 AND r.suppressed = 0
+      AND r.entry_name IS NOT NULL AND p.hidden = 0
+      AND (?3 IS NULL OR r.country = ?3) AND (?4 IS NULL OR r.runtime = ?4) AND (?5 IS NULL OR r.channel = ?5)
+  )`;
 
 const filterArgs = (f: BoardFilter) => [f.game, f.board, f.country, f.runtime, f.channel];
 
@@ -98,8 +100,8 @@ export async function leaderboardPage(
   const { results } = await db
     .prepare(
       `${BEST}
-       SELECT best.player_id, best.score, rank() OVER (ORDER BY best.score DESC) AS rank, p.display_name AS name
-       FROM best JOIN players p ON p.game_id = ?1 AND p.player_id = best.player_id
+       SELECT best.player_id, best.score, rank() OVER (ORDER BY best.score DESC) AS rank, best.name
+       FROM best
        ORDER BY best.score DESC, best.accepted_at ASC, best.run_id ASC
        LIMIT ?6 OFFSET ?7`,
     )
@@ -122,7 +124,7 @@ export async function playerRank(
     .prepare(
       `${BEST}
        SELECT (SELECT count(*) FROM best other WHERE other.score > me.score) + 1 AS rank, me.score AS score
-       FROM best me WHERE me.player_id = ?6`,
+       FROM best me WHERE me.player_id = ?6 ORDER BY me.score DESC, me.accepted_at, me.run_id LIMIT 1`,
     )
     .bind(...filterArgs(f), player)
     .first<{ rank: number; score: number }>();
@@ -151,7 +153,15 @@ export async function pruneResults(db: D1Database, before: number, limit = 500):
     .prepare(
       `DELETE FROM results WHERE run_id IN (
          SELECT run_id FROM results r WHERE r.accepted_at < ?
-           AND NOT EXISTS (SELECT 1 FROM bests b WHERE b.run_id = r.run_id) LIMIT ?)`,
+           AND NOT EXISTS (SELECT 1 FROM bests b WHERE b.run_id = r.run_id)
+           AND (r.entry_name IS NULL OR r.score <= 0 OR r.suppressed = 1 OR EXISTS (
+             SELECT 1 FROM results higher JOIN players p ON p.game_id = higher.game_id AND p.player_id = higher.player_id
+             WHERE higher.game_id = r.game_id AND higher.board = r.board AND higher.country = r.country
+               AND higher.runtime = r.runtime AND higher.channel = r.channel AND p.hidden = 0
+               AND higher.suppressed = 0 AND higher.score > 0 AND higher.entry_name IS NOT NULL
+               AND (higher.score > r.score OR (higher.score = r.score AND (higher.accepted_at < r.accepted_at
+                 OR (higher.accepted_at = r.accepted_at AND higher.run_id < r.run_id))))
+             LIMIT 1 OFFSET 99)) LIMIT ?)`,
     )
     .bind(before, limit)
     .run();

@@ -76,11 +76,11 @@ Body `{ "display_name": "kitty" }`, and no other field. Sets the caller's public
 - `400 bad_request`: invalid name or extra field. The previous name stays.
 - `429 rate_limited`: the name changed less than a minute ago.
 
-Naming makes the player's stored verified results rank at once; nothing is published or awarded again. Boards may show the old state for up to 30 s (cache). Names are public: tell players not to enter personal information.
+Legacy clients use this profile name for future publications only. Changing it never relabels stored entries. Arcade clients use the run entry endpoint below instead. Boards may show the old state for up to 30 s (cache).
 
 ### `POST /v1/games/:game/runs`
 
-Body `{ "build_id", "mode" }`. `mode` is required for a game with modes (one of its `modes`, such as an ebakuw8 stage) and refused otherwise. `201`:
+Body `{ "build_id", "mode", "arcade": true }`. `arcade` is optional for legacy clients. Arcade runs remain unnamed until entry submission; the response echoes `arcade: true`. `mode` is required for a game with modes (one of its `modes`, such as an ebakuw8 stage) and refused otherwise. `201`:
 
 ```json
 {
@@ -91,6 +91,14 @@ Body `{ "build_id", "mode" }`. `mode` is required for a game with modes (one of 
 ```
 
 Start the ranked simulation with `seed` (and `mode`) when this response arrives. Tick 0 is the baseline; a moded response also echoes `mode`.
+
+### `POST /v1/games/:game/runs/:run/entry`
+
+Body `{ "display_name": "TEST-001" }`. Requires the run owner's token, an arcade run, and a positive server-verified result. Uses the profile name validation rules. Returns `200 { "display_name": "TEST-001" }`.
+
+The name is saved once for this run. An identical retry succeeds; a different name returns `409 entry_locked`. Pending verification or publication returns `409 run_not_active`; rejected, expired, and zero-score runs return `422 run_rejected`. No client score or ownership fields are accepted. This endpoint never edits a profile or another run.
+
+Boards rank individual named runs, so one installation can have several entries with different names. Platform and provider filtering remain unchanged. The authenticated `me` field reports the installation's best named entry.
 
 ### `POST /v1/games/:game/runs/:run/inputs`
 
@@ -152,7 +160,7 @@ Query: `board` (default the newest), `mode` (moded games: each mode ranks separa
 }
 ```
 
-Each player appears once with their best score inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the player has no result in the filter or has not chosen a name. Unnamed players take no rank.
+Each named run appears separately inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the installation has no named result in the filter. Unnamed runs take no rank.
 
 ### `GET /v1/games/:game/me/achievements`
 

@@ -32,7 +32,18 @@ function M.platform(game_id)
 			return type(saved.token) == "string" and saved.token or nil
 		end,
 		save_token = function(token)
-			sys.save(path, { token = token })
+			local saved = sys.load(path)
+			saved.token = token
+			sys.save(path, saved)
+		end,
+		load_entries = function()
+			local saved = sys.load(path)
+			return type(saved.entries) == "table" and saved.entries or {}
+		end,
+		save_entries = function(entries)
+			local saved = sys.load(path)
+			saved.entries = entries
+			return sys.save(path, saved)
 		end,
 	}
 end

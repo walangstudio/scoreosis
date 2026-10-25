@@ -260,8 +260,10 @@ route('POST', /^\/v1\/games\/([a-z0-9_]+)\/runs$/, async ({ request, env }, [gam
   // Throttling, the disabled-ruleset check and admission run in the player's
   // object after the credential check, so forged tokens cannot spend capacity.
   const country = callerCountry(request);
+  if (body.arcade !== undefined && typeof body.arcade !== 'boolean')
+    throw new ApiError('bad_request', 'arcade must be a boolean');
   return reply(
-    await auth.session.startRun(auth.secretHash, build.id, country, mode),
+    await auth.session.startRun(auth.secretHash, build.id, country, mode, body.arcade === true),
     (r) => r.run,
     201,
   );
@@ -343,6 +345,21 @@ route(
     return reply(await auth.session.abandon(auth.secretHash, runIdOf(runId)), () => ({
       status: 'abandoned',
     }));
+  },
+);
+
+route(
+  'POST',
+  /^\/v1\/games\/([a-z0-9_]+)\/runs\/([0-9a-f-]+)\/entry$/,
+  async ({ request, env }, [gameId = '', runId = '']) => {
+    const auth = await authenticate(request, env, getGame(gameId).id);
+    const name = displayName(await readJson(request, JSON_LIMIT));
+    return reply(
+      await auth.session.submitEntry(auth.secretHash, runIdOf(runId), name),
+      (r) => r.entry,
+      200,
+      'private, no-store',
+    );
   },
 );
 

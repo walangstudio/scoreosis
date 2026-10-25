@@ -46,3 +46,13 @@ assert(configured == 2)
 system, scoreosis_tls = "HTML5", nil
 attempt(200, "web transport uses browser certificate verification")
 print("5 transport checks, 0 failures")
+local saved = {}
+sys.load = function() return saved end
+sys.save = function(_, value) saved = value; return true end
+local platform = require("scoreosis.defold").platform("toy")
+platform.save_token("token")
+assert(platform.save_entries({{run_id="run", display_name="TEST-001"}}))
+assert(platform.load_token() == "token")
+platform.save_token("token-2")
+assert(platform.load_entries()[1].display_name == "TEST-001")
+print("2 entry persistence checks, 0 failures")
