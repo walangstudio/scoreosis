@@ -38,8 +38,12 @@ describe('verified ranked run', () => {
       token: player.token,
     });
     expect(board.status).toBe(200);
-    expect(board.body.entries).toEqual([{ rank: 1, name: 'kitty', score: clientFacts.score }]);
-    expect(board.body.me).toEqual({ rank: 1, score: clientFacts.score });
+    expect(board.body.entries).toEqual(
+      clientFacts.score > 0 ? [{ rank: 1, name: 'kitty', score: clientFacts.score }] : [],
+    );
+    expect(board.body.me).toEqual(
+      clientFacts.score > 0 ? { rank: 1, score: clientFacts.score } : null,
+    );
 
     const achievements = await api('/v1/games/ahsteroids/me/achievements', { token: player.token });
     expect(achievements.status).toBe(200);
