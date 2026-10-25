@@ -138,6 +138,8 @@ Ends the run as local only.
 
 ### `GET /v1/games/:game/leaderboards`
 
+Only positive scores rank. Zero-score runs retain their verified results and achievement progress but have no leaderboard entry or personal rank.
+
 Query: `board` (default the newest), `mode` (moded games: each mode ranks separately; default the newest ruleset's first; refused for a game without modes), `country` (ISO 3166-1 alpha-2), `runtime` (`web`, `windows`, `android`, `ios`, `macos`, `linux`), `channel` (`itch_io`, `google_play`, `steam`, `direct`, `unknown`), `page` (0-3), `me=1` (needs the token).
 
 ```json

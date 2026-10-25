@@ -198,6 +198,25 @@ describe('player profile', () => {
     expect((await api(`${path}&me=1`)).status).toBe(401);
   });
 
+  it('excludes zero from public boards and personal ranks while keeping positive scores', async () => {
+    const zero = await guest();
+    await rename(zero, { display_name: 'test 001' });
+    await verified(zero, 0, 'FI');
+    const path = '/v1/games/ahsteroids/leaderboards?country=FI&runtime=web&me=1';
+    const empty = await api(path, { token: zero });
+    expect(empty.body.entries).toEqual([]);
+    expect(empty.body.me).toBeNull();
+    const positive = await guest();
+    await rename(positive, { display_name: 'test 002' });
+    await verified(positive, 1, 'FI');
+    const board = await api(path, { token: positive });
+    expect(board.body.entries).toEqual([{ rank: 1, name: 'test 002', score: 1 }]);
+    expect(board.body.me).toEqual({ rank: 1, score: 1 });
+    expect(
+      (await api('/v1/games/ahsteroids/leaderboards?country=FI&runtime=web')).body.entries,
+    ).toEqual(board.body.entries);
+  });
+
   it('accepts a retry of the current name without spending the rename slot', async () => {
     const token = await guest();
     expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);

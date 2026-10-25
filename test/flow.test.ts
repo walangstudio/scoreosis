@@ -103,7 +103,9 @@ describe('verified ranked run', () => {
     const board = await api('/v1/games/sneak/leaderboards?runtime=web&channel=itch_io&me=1', {
       token: player.token,
     });
-    expect(board.body.me).toEqual({ rank: 1, score: clientFacts.score });
+    expect(board.body.me).toEqual(
+      clientFacts.score > 0 ? { rank: 1, score: clientFacts.score } : null,
+    );
     const achievements = await api('/v1/games/sneak/me/achievements', { token: player.token });
     expect(achievements.body.achievements).toHaveLength(12);
     const food = achievements.body.achievements.find((a: { id: string }) => a.id === 'food_10');
