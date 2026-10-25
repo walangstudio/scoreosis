@@ -39,7 +39,7 @@ describe('verified ranked run', () => {
     });
     expect(board.status).toBe(200);
     expect(board.body.entries).toEqual(
-      clientFacts.score > 0 ? [{ rank: 1, name: 'kitty', score: clientFacts.score }] : [],
+      clientFacts.score > 0 ? [{ rank: 1, name: 'test-001', score: clientFacts.score }] : [],
     );
     expect(board.body.me).toEqual(
       clientFacts.score > 0 ? { rank: 1, score: clientFacts.score } : null,

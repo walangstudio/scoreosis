@@ -4,6 +4,8 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 
 ## Unreleased
 
+- 2026-10-25: Accept single hyphens between name segments, including test-001. Keep length, character and reserved-name validation.
+
 - 2026-10-25: Exclude zero scores from every leaderboard and personal rank. Positive scores still qualify from one point.
 
 - 2026-10-24: Allow Ah!Steroids' documented port 8097 preview origins in staging CORS. Keep production restricted to itch.

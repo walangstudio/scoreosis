@@ -112,7 +112,7 @@ function M:profile(callback)
 	self:call("GET", self:game_path("/me/profile"), nil, callback, true)
 end
 
--- Saves the player's public name (2-16 letters, digits, single spaces).
+-- Saves the player's public name (2-16 letters, digits, single spaces or hyphens).
 -- callback(ok, { display_name = saved }) or (false, { code = "bad_request" | "rate_limited" | ... }).
 function M:set_name(name, callback)
 	self:call("PATCH", self:game_path("/me/profile"), { display_name = name }, callback, true)

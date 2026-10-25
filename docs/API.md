@@ -71,7 +71,7 @@ A new guest has no public name. Its verified results are stored and its achievem
 
 ### `PATCH /v1/games/:game/me/profile`
 
-Body `{ "display_name": "kitty" }`, and no other field. Sets the caller's public name for this game and returns the saved name. The server trims the name and collapses repeated spaces; the result must be 2-16 ASCII letters and digits with single spaces between words, and must not start with `guest`. Case is kept. Names need not be unique and identify nobody: the token is the identity.
+Body `{ "display_name": "kitty" }`, and no other field. Sets the caller's public name for this game and returns the saved name. The server trims the name and collapses repeated spaces; the result must be 2-16 ASCII letters and digits with single spaces or hyphens between words, and must not start with `guest`. Case is kept. Names need not be unique and identify nobody: the token is the identity.
 
 - `400 bad_request`: invalid name or extra field. The previous name stays.
 - `429 rate_limited`: the name changed less than a minute ago.

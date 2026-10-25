@@ -44,27 +44,31 @@ describe('player profile', () => {
 
   it('saves a trimmed, collapsed name with its casing', async () => {
     const token = await guest();
-    const saved = await rename(token, { display_name: '  Kitty   Cat ' });
+    const saved = await rename(token, { display_name: '  Test-001   A ' });
     expect(saved.status).toBe(200);
-    expect(saved.body).toEqual({ display_name: 'Kitty Cat' });
-    expect((await profile(token)).body).toEqual({ display_name: 'Kitty Cat' });
+    expect(saved.body).toEqual({ display_name: 'Test-001 A' });
+    expect((await profile(token)).body).toEqual({ display_name: 'Test-001 A' });
   });
 
   it('rejects invalid names and keeps the previous one', async () => {
     const token = await guest();
-    expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);
+    expect((await rename(token, { display_name: 'test-001' })).status).toBe(200);
     for (const display_name of [
       '',
       '   ',
       'k',
       'a'.repeat(17),
-      '<b>kitty</b>',
+      '<b>test-001</b>',
       'kit\tty',
       'kit\nty',
-      'kitty\u0000',
-      'kitty​',
+      'test-001\u0000',
+      'test-001​',
       'ñame',
-      'kit-ty',
+      '-test',
+      'test-',
+      'test--001',
+      'test -001',
+      'test- 001',
       'Guest-4F2A10',
       'guest 42',
       42,
@@ -75,7 +79,7 @@ describe('player profile', () => {
       expect(res.body.error.code).toBe('bad_request');
     }
     expect((await rename(token, {})).status).toBe(400);
-    expect((await profile(token)).body).toEqual({ display_name: 'kitty' });
+    expect((await profile(token)).body).toEqual({ display_name: 'test-001' });
   });
 
   it('rejects ownership fields so a caller cannot pick the row', async () => {
@@ -90,32 +94,32 @@ describe('player profile', () => {
 
   it('rejects oversized bodies', async () => {
     const token = await guest();
-    const res = await rename(token, { display_name: 'kitty', pad: 'x'.repeat(4096) });
+    const res = await rename(token, { display_name: 'test-001', pad: 'x'.repeat(4096) });
     expect(res.status).toBe(413);
   });
 
   it('requires a valid credential for this game', async () => {
     const token = await guest();
-    expect((await api(PROFILE, { method: 'PATCH', body: { display_name: 'kitty' } })).status).toBe(
-      401,
-    );
+    expect(
+      (await api(PROFILE, { method: 'PATCH', body: { display_name: 'test-001' } })).status,
+    ).toBe(401);
     expect((await api(PROFILE)).status).toBe(401);
     const forged = `${playerOf(token)}.${'A'.repeat(43)}`;
-    expect((await rename(forged, { display_name: 'kitty' })).status).toBe(401);
+    expect((await rename(forged, { display_name: 'test-001' })).status).toBe(401);
     expect((await profile(forged)).status).toBe(401);
     const sneakBuild = registry.get('sneak')?.builds.keys().next().value ?? '';
     const sneak = await guest('sneak', sneakBuild);
-    expect((await rename(sneak, { display_name: 'kitty' })).status).toBe(401);
+    expect((await rename(sneak, { display_name: 'test-001' })).status).toBe(401);
     expect((await profile(token)).body).toEqual({ display_name: null });
   });
 
   it('lets different players share a name', async () => {
     const a = await guest();
     const b = await guest();
-    expect((await rename(a, { display_name: 'kitty' })).status).toBe(200);
-    expect((await rename(b, { display_name: 'kitty' })).status).toBe(200);
+    expect((await rename(a, { display_name: 'test-001' })).status).toBe(200);
+    expect((await rename(b, { display_name: 'test-001' })).status).toBe(200);
     const rows = await env.DB.prepare(
-      "SELECT count(*) AS n FROM players WHERE game_id = 'ahsteroids' AND player_id IN (?, ?) AND display_name = 'kitty'",
+      "SELECT count(*) AS n FROM players WHERE game_id = 'ahsteroids' AND player_id IN (?, ?) AND display_name = 'test-001'",
     )
       .bind(playerOf(a), playerOf(b))
       .first<{ n: number }>();
@@ -145,17 +149,17 @@ describe('player profile', () => {
   it('keeps an unnamed player off the board until they choose a name', async () => {
     const unnamed = await guest();
     const named = await guest();
-    expect((await rename(named, { display_name: 'kitty' })).status).toBe(200);
+    expect((await rename(named, { display_name: 'test-001' })).status).toBe(200);
     await verified(unnamed, 900, 'NZ');
     await verified(named, 500, 'NZ');
 
     const before = await api('/v1/games/ahsteroids/leaderboards?country=NZ&me=1', {
       token: unnamed,
     });
-    expect(before.body.entries).toEqual([{ rank: 1, name: 'kitty', score: 500 }]);
+    expect(before.body.entries).toEqual([{ rank: 1, name: 'test-001', score: 500 }]);
     expect(before.body.me).toBeNull();
     const best = await api('/v1/games/ahsteroids/leaderboards?country=NZ&runtime=web');
-    expect(best.body.entries[0]).toEqual({ rank: 1, name: 'kitty', score: 500 });
+    expect(best.body.entries[0]).toEqual({ rank: 1, name: 'test-001', score: 500 });
 
     expect((await rename(unnamed, { display_name: 'Late Cat' })).status).toBe(200);
     const after = await api('/v1/games/ahsteroids/leaderboards?country=NZ&me=1', {
@@ -163,7 +167,7 @@ describe('player profile', () => {
     });
     expect(after.body.entries).toEqual([
       { rank: 1, name: 'Late Cat', score: 900 },
-      { rank: 2, name: 'kitty', score: 500 },
+      { rank: 2, name: 'test-001', score: 500 },
     ]);
     expect(after.body.me).toEqual({ rank: 1, score: 900 });
   });
@@ -175,13 +179,13 @@ describe('player profile', () => {
     );
     let failed: Awaited<ReturnType<typeof rename>>;
     try {
-      failed = await rename(token, { display_name: 'kitty' });
+      failed = await rename(token, { display_name: 'test-001' });
     } finally {
       await env.DB.exec('DROP TRIGGER players_down');
     }
     expect(failed.status).toBe(500);
-    expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);
-    expect((await profile(token)).body).toEqual({ display_name: 'kitty' });
+    expect((await rename(token, { display_name: 'test-001' })).status).toBe(200);
+    expect((await profile(token)).body).toEqual({ display_name: 'test-001' });
   });
 
   it('shows a verified two-point score immediately after the name is chosen', async () => {
@@ -189,10 +193,10 @@ describe('player profile', () => {
     await verified(token, 2, 'KE');
     const path = '/v1/games/ahsteroids/leaderboards?country=KE&runtime=web';
     expect((await api(path)).body.entries).toEqual([]);
-    expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);
+    expect((await rename(token, { display_name: 'test-001' })).status).toBe(200);
     const board = await api(`${path}&me=1`, { token });
     expect(board.status).toBe(200);
-    expect(board.body.entries).toEqual([{ rank: 1, name: 'kitty', score: 2 }]);
+    expect(board.body.entries).toEqual([{ rank: 1, name: 'test-001', score: 2 }]);
     expect(board.body.me).toEqual({ rank: 1, score: 2 });
     expect(board.headers.get('cache-control')).toBe('private, no-store');
     expect((await api(`${path}&me=1`)).status).toBe(401);
@@ -200,17 +204,17 @@ describe('player profile', () => {
 
   it('excludes zero from public boards and personal ranks while keeping positive scores', async () => {
     const zero = await guest();
-    await rename(zero, { display_name: 'test 001' });
+    await rename(zero, { display_name: 'test-001' });
     await verified(zero, 0, 'FI');
     const path = '/v1/games/ahsteroids/leaderboards?country=FI&runtime=web&me=1';
     const empty = await api(path, { token: zero });
     expect(empty.body.entries).toEqual([]);
     expect(empty.body.me).toBeNull();
     const positive = await guest();
-    await rename(positive, { display_name: 'test 002' });
+    await rename(positive, { display_name: 'test-002' });
     await verified(positive, 1, 'FI');
     const board = await api(path, { token: positive });
-    expect(board.body.entries).toEqual([{ rank: 1, name: 'test 002', score: 1 }]);
+    expect(board.body.entries).toEqual([{ rank: 1, name: 'test-002', score: 1 }]);
     expect(board.body.me).toEqual({ rank: 1, score: 1 });
     expect(
       (await api('/v1/games/ahsteroids/leaderboards?country=FI&runtime=web')).body.entries,
@@ -219,11 +223,11 @@ describe('player profile', () => {
 
   it('accepts a retry of the current name without spending the rename slot', async () => {
     const token = await guest();
-    expect((await rename(token, { display_name: 'kitty' })).status).toBe(200);
-    const retry = await rename(token, { display_name: ' kitty ' });
+    expect((await rename(token, { display_name: 'test-001' })).status).toBe(200);
+    const retry = await rename(token, { display_name: ' test-001 ' });
     expect(retry.status).toBe(200);
-    expect(retry.body).toEqual({ display_name: 'kitty' });
-    expect((await rename(token, { display_name: 'Kitty' })).status).toBe(429);
+    expect(retry.body).toEqual({ display_name: 'test-001' });
+    expect((await rename(token, { display_name: 'Test-001' })).status).toBe(429);
   });
 
   it('treats players named before 0.2.0 (generated Guest names) as unnamed', async () => {

@@ -48,3 +48,15 @@ Outstanding, explicitly requested by the user:
 4. Visually inspect the rebuilt keyboard/gamepad/touch screens on a real browser/device. Native geometry checks passed but visual approval is still outstanding.
 
 Preserve Sneak's pre-existing .gitignore, docs/GAME_DESIGN.md and media changes. No pushes, production deployments or OS shutdown commands were issued.
+
+
+## Resume checkpoint - 2026-10-25 afternoon
+
+- Sneak fa4abc9 and Ah!Steroids 16166cf implement a one-time Local score/name cleanup on the next load of a localhost or 127.0.0.1 Web preview pointed at staging. The marker is preview_scores_reset_20261025. Production, itch, native saves, preferences, achievements and online credentials are not cleared. Scores earned after this reset survive reloads. The user's browser was closed, so their actual saved data has not yet been observed clearing. Do not claim otherwise.
+- Name entry, rendering and Scoreosis validation support a single hyphen between alphanumeric segments. Test players use TEST-001/test-001. Sneak's font was regenerated through tools/export_font.py with a hyphen glyph; Ah!Steroids' existing font contains it.
+- Reproduced hyphen stripping through Ah!Steroids native name entry before the fix. Final native UI checks: Sneak 306 PASS, Ah!Steroids 53 PASS. Both Web and Windows debug bundles rebuilt; both preview origins return HTTP 200. Tests for one-time cleanup, host/environment boundaries, preserved settings and subsequent scores pass. Browser name-form and Lua suites pass.
+- Scoreosis final lint/typecheck pass; 126 API tests pass, four optional skips; all Lua checks and docs build pass. Initial Cloudflare test-pool startup timed out with no tests executed; serial retry passed. Run npm.cmd test -- --maxWorkers=1 --no-file-parallelism on this machine if startup times out again.
+- Hyphen validation is deployed to staging, version 10205f44-af2a-455d-8822-8c825a4f0422. Production unchanged. No new live players/scores were created in this session.
+- Preview servers restarted: Sneak http://127.0.0.1:8774/ (PID 31736), Ah!Steroids http://127.0.0.1:8097/ (PID 37380). They serve the rebuilt debug bundles with staging configuration.
+- Two animated, standalone background mockups are saved in Sneak review/menu-background-proposals.html. A keeps a clear center and a snake at the arena edge; B uses an opaque menu panel over the arena. The game background itself is unchanged, pending review. Mockup JavaScript syntax passes; browser visual inspection remains pending.
+- Preserve existing user changes and media. No pushes or OS shutdown commands issued.
