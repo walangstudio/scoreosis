@@ -4,6 +4,8 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 
 ## Unreleased
 
+- 2026-10-26: Register Ah!Steroids 0.1.1 and Sneak 0.2.1 itch builds against their existing verified rulesets. Keep older builds accepted.
+
 - 2026-10-26: Include the latest named run's row position in authenticated leaderboard responses, so games highlight the new entry rather than the personal best or every tied score.
 
 - 2026-10-26: Batch the ruleset-disable check and daily quota reservation into one D1 round trip when starting a run. Disabled builds do not consume quota; admission limits and verification stay enforced.
