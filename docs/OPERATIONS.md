@@ -25,6 +25,7 @@ Run a staging soak with a real client and read Workers Observability:
 - CPU per `inputs` request and per alarm (`VERIFY_INSTRUCTIONS` caps verifier work; ~116k instructions per ms).
 - Durable Object requests, rows written and stored bytes per player-minute.
 - `run_rejected` reasons, `desync`, `verifier_error`, `publish_retry`, `capacity_reached` events.
+- D1 rows read per `me=1` leaderboard request. Those reads skip the cache and scan every named positive result in the filter, so their cost grows with stored results.
 
 Set `MAX_RUNS_PER_DAY` from the measured rows written per run, leaving room for other projects on the account.
 

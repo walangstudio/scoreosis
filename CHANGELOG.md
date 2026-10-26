@@ -2,25 +2,22 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
-## Unreleased
+## [0.3.0] - 2026-10-27
 
-- 2026-10-26: Register Ah!Steroids 0.1.1 and Sneak 0.2.1 itch builds against their existing verified rulesets. Keep older builds accepted.
+### Added
 
-- 2026-10-26: Include the latest named run's row position in authenticated leaderboard responses, so games highlight the new entry rather than the personal best or every tied score.
+- Arcade entry names: each verified run keeps the name it was submitted with, fixed once set (D1 migration `0003`). Renaming later leaves earlier entries unchanged. Migration `0003` names existing personal bests from their player's current name; unnamed players' earlier runs stay unranked.
+- Authenticated leaderboard responses include the row position of the player's latest named entry, so games highlight the new score.
+- itch builds Ah!Steroids 0.1.1 and Sneak 0.2.1 on their existing verified rulesets. Older builds stay accepted.
+- Staging CORS allows the local game previews (ports 8774, 8775, 8097) and itch. Production still allows itch only.
 
-- 2026-10-26: Batch the ruleset-disable check and daily quota reservation into one D1 round trip when starting a run. Disabled builds do not consume quota; admission limits and verification stay enforced.
+### Changed
 
-- 2026-10-25: Store immutable arcade entry names per verified run. Different names on future runs leave earlier entries unchanged. Persist client submission retries independently of gameplay. Migration 0003 freezes names on existing personal-best records; it does not republish historical non-best runs.
-
-- 2026-10-25: Accept single hyphens between name segments, including test-001. Keep length, character and reserved-name validation.
-
-- 2026-10-25: Exclude zero scores from every leaderboard and personal rank. Positive scores still qualify from one point.
-
-- 2026-10-24: Allow Ah!Steroids' documented port 8097 preview origins in staging CORS. Keep production restricted to itch.
-
-- 2026-10-24: Synchronize saved public names with Scoreosis and refresh personal boards without shared caching. Allow eight seconds for online startup and wait for result publication before refreshing Global.
-
-- 2026-10-24: Allow the two local game previews and itch in staging CORS. Test browser leaderboard reads and authenticated-request preflights while rejecting unlisted origins.
+- Names accept single hyphens between segments (`test-001`). Length, character and reserved-name rules unchanged.
+- Zero scores are left off every board and personal rank. Verified zero-score runs are still stored.
+- Authenticated (`me=1`) leaderboard reads bypass the shared cache, so new results and names show at once. Their D1 read cost grows with stored results; watch it in Operations before raising limits.
+- Run start checks the disabled-ruleset list and reserves daily quota in one D1 round trip. Disabled builds use no quota.
+- Lua client: syncs the saved public name, waits for publication before reporting a result, and allows eight seconds for online startup.
 
 ## [0.2.0] - 2026-10-23
 
