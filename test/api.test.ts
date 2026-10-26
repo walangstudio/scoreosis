@@ -104,6 +104,8 @@ describe('public API', () => {
 
   it('blocks new runs on a disabled ruleset', async () => {
     const player = await Player.create();
+    const used = () => env.DB.prepare('SELECT sum(runs_started) AS n FROM usage').first('n');
+    const before = await used();
     const denied = await api(`/v1/admin/games/ahsteroids/rulesets/${RULESET}/disable`, {
       body: {},
     });
@@ -116,6 +118,7 @@ describe('public API', () => {
     const res = await player.start();
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('ruleset_disabled');
+    expect(await used()).toBe(before);
     await env.DB.prepare('DELETE FROM disabled_rulesets').run();
   });
 });

@@ -55,7 +55,7 @@ pnpm deploy:production
 
 ## How it works
 
-1. The game creates a guest and starts a ranked run. The server returns a seed.
+1. The game creates a guest and starts a ranked run. Guest registration can finish on the menu; timed runs begin only on Play. The server checks disabled rulesets and reserves daily quota in one D1 batch, then returns a seed.
 2. The game steps its simulation at 60 Hz and sends each second of button inputs with a state checksum.
 3. The player's Durable Object checks timing and sequence, stores the inputs and replays them in the verifier.
 4. A checksum mismatch rejects the run. At the terminal tick, one transaction records the result, the BadgeTrip achievements and an outbox row.

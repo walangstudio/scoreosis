@@ -4,6 +4,8 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 
 ## Unreleased
 
+- 2026-10-26: Batch the ruleset-disable check and daily quota reservation into one D1 round trip when starting a run. Disabled builds do not consume quota; admission limits and verification stay enforced.
+
 - 2026-10-25: Store immutable arcade entry names per verified run. Different names on future runs leave earlier entries unchanged. Persist client submission retries independently of gameplay. Migration 0003 freezes names on existing personal-best records; it does not republish historical non-best runs.
 
 - 2026-10-25: Accept single hyphens between name segments, including test-001. Keep length, character and reserved-name validation.

@@ -213,14 +213,7 @@ export class PlayerSession extends DurableObject<Env> {
       this.assertNoActiveRun(Date.now());
       const { success } = await this.env.API_LIMITER.limit({ key: `runs:${build.game}:${player}` });
       if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
-      const disabled = await this.env.DB.prepare(
-        'SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?',
-      )
-        .bind(build.game, build.ruleset.ruleset)
-        .first();
-      if (disabled)
-        throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
-      await admit(this.env);
+      await admit(this.env, build.game, build.ruleset.ruleset);
       // The awaits above let other requests in; check again before creating the run.
       const now = Date.now();
       this.assertNoActiveRun(now);
@@ -1022,16 +1015,25 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 /** Stops new ranked runs before the daily free-plan budget is exhausted. */
-async function admit(env: Env): Promise<void> {
+async function admit(env: Env, game: string, ruleset: string): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  const row = await env.DB.prepare(
-    `INSERT INTO usage (day, runs_started) VALUES (?1, 1)
-     ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
-     RETURNING runs_started`,
-  )
-    .bind(day, Number(env.MAX_RUNS_PER_DAY))
-    .first();
-  if (!row) {
+  const [disabled, admitted] = await env.DB.batch([
+    env.DB.prepare('SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?').bind(
+      game,
+      ruleset,
+    ),
+    env.DB.prepare(
+      `INSERT INTO usage (day, runs_started)
+       SELECT ?1, 1 WHERE NOT EXISTS (
+         SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4
+       )
+       ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
+       RETURNING runs_started`,
+    ).bind(day, Number(env.MAX_RUNS_PER_DAY), game, ruleset),
+  ]);
+  if (disabled?.results.length)
+    throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
+  if (!admitted?.results.length) {
     log('capacity_reached', { day });
     throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
   }
