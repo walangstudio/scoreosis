@@ -46,7 +46,7 @@ describe('verified ranked run', () => {
       clientFacts.score > 0 ? [{ rank: 1, name: 'test-001', score: clientFacts.score }] : [],
     );
     expect(board.body.me).toEqual(
-      clientFacts.score > 0 ? { rank: 1, score: clientFacts.score } : null,
+      clientFacts.score > 0 ? { rank: 1, score: clientFacts.score, latest_position: 1 } : null,
     );
 
     const achievements = await api('/v1/games/ahsteroids/me/achievements', { token: player.token });
@@ -116,7 +116,7 @@ describe('verified ranked run', () => {
       token: player.token,
     });
     expect(board.body.me).toEqual(
-      clientFacts.score > 0 ? { rank: 1, score: clientFacts.score } : null,
+      clientFacts.score > 0 ? { rank: 1, score: clientFacts.score, latest_position: 1 } : null,
     );
     const achievements = await api('/v1/games/sneak/me/achievements', { token: player.token });
     expect(achievements.body.achievements).toHaveLength(12);

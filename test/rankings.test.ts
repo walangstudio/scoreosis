@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { type PublishedResult, publishResult } from '../src/leaderboard.js';
+import { type PublishedResult, playerRank, publishResult } from '../src/leaderboard.js';
 import { api } from './client.js';
 import { RULESET } from './fixtures.js';
 
@@ -151,5 +151,30 @@ describe('leaderboards', () => {
       name: 'zed',
       score: 50,
     });
+  });
+  it('identifies the latest own entry separately from the best, including tied scores', async () => {
+    const own = await player('test-001');
+    const other = await player('test-002');
+    const filter = {
+      game: 'ahsteroids',
+      board: 'classic',
+      country: 'NZ',
+      runtime: 'web',
+      channel: null,
+    };
+    await result(own, 500, { country: 'NZ' });
+    await result(other, 100, { country: 'NZ' });
+    const latest = await result(own, 100, { country: 'NZ' });
+    expect(await playerRank(env.DB, filter, own)).toEqual({
+      rank: 1,
+      score: 500,
+      latest_position: 3,
+    });
+    await result(own, 1000, { country: 'NZ', runtime: 'windows' });
+    expect((await playerRank(env.DB, filter, own))?.latest_position).toBe(3);
+    await env.DB.prepare('UPDATE results SET suppressed = 1 WHERE run_id = ?')
+      .bind(latest.run_id)
+      .run();
+    expect((await playerRank(env.DB, filter, own))?.latest_position).toBe(1);
   });
 });

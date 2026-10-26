@@ -194,7 +194,7 @@ describe('player profile', () => {
     const board = await api(`${path}&me=1`, { token });
     expect(board.status).toBe(200);
     expect(board.body.entries).toEqual([{ rank: 1, name: 'test-001', score: 2 }]);
-    expect(board.body.me).toEqual({ rank: 1, score: 2 });
+    expect(board.body.me).toEqual({ rank: 1, score: 2, latest_position: 1 });
     expect(board.headers.get('cache-control')).toBe('private, no-store');
     expect((await api(`${path}&me=1`)).status).toBe(401);
   });
@@ -212,7 +212,7 @@ describe('player profile', () => {
     await verified(positive, 1, 'FI');
     const board = await api(path, { token: positive });
     expect(board.body.entries).toEqual([{ rank: 1, name: 'test-002', score: 1 }]);
-    expect(board.body.me).toEqual({ rank: 1, score: 1 });
+    expect(board.body.me).toEqual({ rank: 1, score: 1, latest_position: 1 });
     expect(
       (await api('/v1/games/ahsteroids/leaderboards?country=FI&runtime=web')).body.entries,
     ).toEqual(board.body.entries);

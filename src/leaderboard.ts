@@ -119,15 +119,21 @@ export async function playerRank(
   db: D1Database,
   f: BoardFilter,
   player: string,
-): Promise<{ rank: number; score: number } | null> {
+): Promise<{ rank: number; score: number; latest_position: number } | null> {
   return db
     .prepare(
-      `${BEST}
-       SELECT (SELECT count(*) FROM best other WHERE other.score > me.score) + 1 AS rank, me.score AS score
-       FROM best me WHERE me.player_id = ?6 ORDER BY me.score DESC, me.accepted_at, me.run_id LIMIT 1`,
+      `${BEST}, ranked AS (
+         SELECT best.*, rank() OVER (ORDER BY score DESC) AS rank,
+           row_number() OVER (ORDER BY score DESC, accepted_at ASC, run_id ASC) AS position
+         FROM best
+       )
+       SELECT me.rank, me.score,
+         (SELECT position FROM ranked latest WHERE latest.player_id = ?6
+          ORDER BY latest.accepted_at DESC, latest.run_id DESC LIMIT 1) AS latest_position
+       FROM ranked me WHERE me.player_id = ?6 ORDER BY me.position LIMIT 1`,
     )
     .bind(...filterArgs(f), player)
-    .first<{ rank: number; score: number }>();
+    .first<{ rank: number; score: number; latest_position: number }>();
 }
 
 /** Rebuilds personal bests for a game from unsuppressed results (after moderation). */

@@ -156,11 +156,11 @@ Query: `board` (default the newest), `mode` (moded games: each mode ranks separa
   "filters": { "country": null, "runtime": "android", "channel": null },
   "page": 0, "page_size": 25,
   "entries": [{ "rank": 1, "name": "kitty", "score": 18450 }],
-  "me": { "rank": 37, "score": 9120 }
+  "me": { "rank": 37, "score": 9120, "latest_position": 42 }
 }
 ```
 
-Each named run appears separately inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the installation has no named result in the filter. Unnamed runs take no rank.
+Each named run appears separately inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the installation has no named result in the filter. Unnamed runs take no rank. `me.latest_position` is the one-based row position of the latest accepted named run in this filter, distinct from the best rank. It follows the same score/acceptance/run-ID ordering as the entries, so tied ranks still identify one row. Positions beyond 100 are outside the public paging window.
 
 ### `GET /v1/games/:game/me/achievements`
 

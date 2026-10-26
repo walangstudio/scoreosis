@@ -153,7 +153,11 @@ describe('recovery', () => {
     const again = await player.finish();
     expect(again.body.published).toBe(true);
     const board = await api('/v1/games/ahsteroids/leaderboards?me=1', { token: player.token });
-    expect(board.body.me).toEqual({ rank: expect.any(Number), score: first.body.score });
+    expect(board.body.me).toEqual({
+      rank: expect.any(Number),
+      score: first.body.score,
+      latest_position: expect.any(Number),
+    });
   });
 
   it('never lets a late or duplicate publication lower a personal best', async () => {

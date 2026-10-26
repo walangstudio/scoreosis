@@ -21,7 +21,7 @@ A leaderboard that accepts a score from the client is a leaderboard of whoever e
 
 ## Features
 
-- **Global and country leaderboards per platform.** Web, Windows, Android and the rest rank separately; the API also filters by store. Each player appears once with their best run.
+- **Global and country leaderboards per platform.** Web, Windows, Android and the rest rank separately; the API also filters by store. Each named run appears separately; authenticated responses identify the latest entry for highlighting.
 - **Modes.** A game with stages or tracks gets one board per mode.
 - **Achievements, local and verified.** Verified progress runs on the BadgeTrip engine, committed in one transaction with the run result. Games track local progress with the same rules and show both.
 - **Guest identity** per game installation. No accounts, no personal data.
