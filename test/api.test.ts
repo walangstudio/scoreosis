@@ -51,6 +51,25 @@ describe('public API', () => {
   });
 
   it('allows CORS only for configured origins', async () => {
+    for (const origin of [
+      'http://127.0.0.1:8774',
+      'http://localhost:8775',
+      'http://127.0.0.1:8097',
+      'http://localhost:8097',
+    ]) {
+      const board = await SELF.fetch(`${BASE}/v1/games/sneak/leaderboards?runtime=web`, {
+        headers: { origin },
+      });
+      expect(board.status).toBe(200);
+      expect(board.headers.get('access-control-allow-origin')).toBe(origin);
+      const preflight = await SELF.fetch(`${BASE}/v1/guests`, {
+        method: 'OPTIONS',
+        headers: { origin, 'access-control-request-method': 'POST' },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(preflight.headers.get('access-control-allow-headers')).toContain('authorization');
+    }
     const res = await SELF.fetch(`${BASE}/v1/health`, {
       headers: { origin: 'https://evil.example' },
     });
@@ -85,6 +104,8 @@ describe('public API', () => {
 
   it('blocks new runs on a disabled ruleset', async () => {
     const player = await Player.create();
+    const used = () => env.DB.prepare('SELECT sum(runs_started) AS n FROM usage').first('n');
+    const before = await used();
     const denied = await api(`/v1/admin/games/ahsteroids/rulesets/${RULESET}/disable`, {
       body: {},
     });
@@ -97,6 +118,7 @@ describe('public API', () => {
     const res = await player.start();
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('ruleset_disabled');
+    expect(await used()).toBe(before);
     await env.DB.prepare('DELETE FROM disabled_rulesets').run();
   });
 });

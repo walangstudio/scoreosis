@@ -43,7 +43,7 @@ export async function guest(game = 'ahsteroids', build = BUILD): Promise<string>
 }
 
 /** Chooses the player's public name; unnamed players stay off the boards. */
-export async function nameTheGuest(game: string, token: string, name = 'kitty') {
+export async function nameTheGuest(game: string, token: string, name = 'test-001') {
   const res = await api(`/v1/games/${game}/me/profile`, {
     method: 'PATCH',
     token,
@@ -93,10 +93,10 @@ export class Player {
     return new Player(token ?? (await guest(game, defaultBuild(game))), inputSeed, game);
   }
 
-  async start(build = defaultBuild(this.game), mode?: string) {
+  async start(build = defaultBuild(this.game), mode?: string, arcade?: boolean) {
     const res = await api(`/v1/games/${this.game}/runs`, {
       token: this.token,
-      body: { build_id: build, mode },
+      body: { build_id: build, mode, arcade },
     });
     if (res.status !== 201) return res;
     this.run = res.body;

@@ -2,6 +2,23 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
+## [0.3.0] - 2026-10-27
+
+### Added
+
+- Arcade entry names: each verified run keeps the name it was submitted with, fixed once set (D1 migration `0003`). Renaming later leaves earlier entries unchanged. Migration `0003` names existing personal bests from their player's current name; unnamed players' earlier runs stay unranked.
+- Authenticated leaderboard responses include the row position of the player's latest named entry, so games highlight the new score.
+- itch builds Ah!Steroids 0.1.1 and Sneak 0.2.1 on their existing verified rulesets. Older builds stay accepted.
+- Staging CORS allows the local game previews (ports 8774, 8775, 8097) and itch. Production still allows itch only.
+
+### Changed
+
+- Names accept single hyphens between segments (`test-001`). Length, character and reserved-name rules unchanged.
+- Zero scores are left off every board and personal rank. Verified zero-score runs are still stored.
+- Authenticated (`me=1`) leaderboard reads bypass the shared cache, so new results and names show at once. Their D1 read cost grows with stored results; watch it in Operations before raising limits.
+- Run start checks the disabled-ruleset list and reserves daily quota in one D1 round trip. Disabled builds use no quota.
+- Lua client: syncs the saved public name, waits for publication before reporting a result, and allows eight seconds for online startup.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added

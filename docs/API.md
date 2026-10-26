@@ -71,16 +71,16 @@ A new guest has no public name. Its verified results are stored and its achievem
 
 ### `PATCH /v1/games/:game/me/profile`
 
-Body `{ "display_name": "kitty" }`, and no other field. Sets the caller's public name for this game and returns the saved name. The server trims the name and collapses repeated spaces; the result must be 2-16 ASCII letters and digits with single spaces between words, and must not start with `guest`. Case is kept. Names need not be unique and identify nobody: the token is the identity.
+Body `{ "display_name": "kitty" }`, and no other field. Sets the caller's public name for this game and returns the saved name. The server trims the name and collapses repeated spaces; the result must be 2-16 ASCII letters and digits with single spaces or hyphens between words, and must not start with `guest`. Case is kept. Names need not be unique and identify nobody: the token is the identity.
 
 - `400 bad_request`: invalid name or extra field. The previous name stays.
 - `429 rate_limited`: the name changed less than a minute ago.
 
-Naming makes the player's stored verified results rank at once; nothing is published or awarded again. Boards may show the old state for up to 30 s (cache). Names are public: tell players not to enter personal information.
+Legacy clients use this profile name for future publications only. Changing it never relabels stored entries. Arcade clients use the run entry endpoint below instead. Boards may show the old state for up to 30 s (cache).
 
 ### `POST /v1/games/:game/runs`
 
-Body `{ "build_id", "mode" }`. `mode` is required for a game with modes (one of its `modes`, such as an ebakuw8 stage) and refused otherwise. `201`:
+Body `{ "build_id", "mode", "arcade": true }`. `arcade` is optional for legacy clients. Arcade runs remain unnamed until entry submission; the response echoes `arcade: true`. `mode` is required for a game with modes (one of its `modes`, such as an ebakuw8 stage) and refused otherwise. `201`:
 
 ```json
 {
@@ -91,6 +91,14 @@ Body `{ "build_id", "mode" }`. `mode` is required for a game with modes (one of 
 ```
 
 Start the ranked simulation with `seed` (and `mode`) when this response arrives. Tick 0 is the baseline; a moded response also echoes `mode`.
+
+### `POST /v1/games/:game/runs/:run/entry`
+
+Body `{ "display_name": "TEST-001" }`. Requires the run owner's token, an arcade run, and a positive server-verified result. Uses the profile name validation rules. Returns `200 { "display_name": "TEST-001" }`.
+
+The name is saved once for this run. An identical retry succeeds; a different name returns `409 entry_locked`. Pending verification or publication returns `409 run_not_active`; rejected, expired, and zero-score runs return `422 run_rejected`. No client score or ownership fields are accepted. This endpoint never edits a profile or another run.
+
+Boards rank individual named runs, so one installation can have several entries with different names. Platform and provider filtering remain unchanged. The authenticated `me` field reports the installation's best named entry.
 
 ### `POST /v1/games/:game/runs/:run/inputs`
 
@@ -138,6 +146,8 @@ Ends the run as local only.
 
 ### `GET /v1/games/:game/leaderboards`
 
+Only positive scores rank. Zero-score runs retain their verified results and achievement progress but have no leaderboard entry or personal rank.
+
 Query: `board` (default the newest), `mode` (moded games: each mode ranks separately; default the newest ruleset's first; refused for a game without modes), `country` (ISO 3166-1 alpha-2), `runtime` (`web`, `windows`, `android`, `ios`, `macos`, `linux`), `channel` (`itch_io`, `google_play`, `steam`, `direct`, `unknown`), `page` (0-3), `me=1` (needs the token).
 
 ```json
@@ -146,11 +156,11 @@ Query: `board` (default the newest), `mode` (moded games: each mode ranks separa
   "filters": { "country": null, "runtime": "android", "channel": null },
   "page": 0, "page_size": 25,
   "entries": [{ "rank": 1, "name": "kitty", "score": 18450 }],
-  "me": { "rank": 37, "score": 9120 }
+  "me": { "rank": 37, "score": 9120, "latest_position": 42 }
 }
 ```
 
-Each player appears once with their best score inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the player has no result in the filter or has not chosen a name. Unnamed players take no rank.
+Each named run appears separately inside the filter. Games show their own platform by default (`runtime` = the build's); the client library fills it in. Equal scores share a rank; earlier acceptance lists first. Responses without `me` are cached publicly for 30 s. `me` is `null` when the installation has no named result in the filter. Unnamed runs take no rank. `me.latest_position` is the one-based row position of the latest accepted named run in this filter, distinct from the best rank. It follows the same score/acceptance/run-ID ordering as the entries, so tied ranks still identify one row. Positions beyond 100 are outside the public paging window.
 
 ### `GET /v1/games/:game/me/achievements`
 

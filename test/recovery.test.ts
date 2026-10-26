@@ -26,6 +26,7 @@ describe('recovery', () => {
     await runInDurableObject(stub, (_, state) => {
       state.storage.sql.exec('ALTER TABLE runs DROP COLUMN mode');
       state.storage.sql.exec('ALTER TABLE runs DROP COLUMN resumed_at');
+      state.storage.sql.exec('ALTER TABLE runs DROP COLUMN arcade');
     });
     await evictDurableObject(stub);
     await player.start();
@@ -133,6 +134,7 @@ describe('recovery', () => {
   it('keeps the result pending while D1 is down and publishes it from the outbox', async () => {
     const clock = useClock();
     const player = await Player.create(2);
+    await nameTheGuest('ahsteroids', player.token);
     await player.start();
     await env.DB.exec('ALTER TABLE bests RENAME TO bests_offline');
     let first: Awaited<ReturnType<Player['finish']>>;
@@ -150,9 +152,12 @@ describe('recovery', () => {
     expect(await runDurableObjectAlarm(stubFor(player.token))).toBe(true);
     const again = await player.finish();
     expect(again.body.published).toBe(true);
-    await nameTheGuest('ahsteroids', player.token);
     const board = await api('/v1/games/ahsteroids/leaderboards?me=1', { token: player.token });
-    expect(board.body.me).toEqual({ rank: expect.any(Number), score: first.body.score });
+    expect(board.body.me).toEqual({
+      rank: expect.any(Number),
+      score: first.body.score,
+      latest_position: expect.any(Number),
+    });
   });
 
   it('never lets a late or duplicate publication lower a personal best', async () => {

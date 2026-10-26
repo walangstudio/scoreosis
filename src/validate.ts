@@ -65,17 +65,17 @@ export function str(body: Record<string, unknown>, key: string, pattern: RegExp)
 
 /**
  * A player-chosen public name: 2-16 ASCII letters and digits, words separated by
- * single spaces after trimming. Names starting with "guest" are reserved.
+ * single spaces or hyphens after trimming. Names starting with "guest" are reserved.
  */
 export function displayName(body: Record<string, unknown>): string {
   const extra = Object.keys(body).filter((k) => k !== 'display_name');
   if (extra.length) throw new ApiError('bad_request', `unexpected field ${extra[0]}`);
   const v = body.display_name;
   const name = typeof v === 'string' ? v.replace(/^ +| +$/g, '').replace(/ {2,}/g, ' ') : '';
-  if (!/^[A-Za-z0-9]+( [A-Za-z0-9]+)*$/.test(name) || name.length < 2 || name.length > 16) {
+  if (!/^[A-Za-z0-9]+([ -][A-Za-z0-9]+)*$/.test(name) || name.length < 2 || name.length > 16) {
     throw new ApiError(
       'bad_request',
-      'display_name must be 2-16 letters, digits and single spaces',
+      'display_name must be 2-16 letters, digits, single spaces or hyphens',
     );
   }
   if (/^guest/i.test(name)) throw new ApiError('bad_request', 'display_name is reserved');

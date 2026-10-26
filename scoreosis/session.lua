@@ -45,14 +45,15 @@ end
 
 -- Starts a ranked run; callback(ok) fires once the simulation exists.
 function M:start(callback)
-	self.client:ensure_guest(function(ok, err)
+	local ensure = self.client.arcade and self.client.ensure_guest or self.client.ensure_player
+	ensure(self.client, function(ok, err)
 		if self.status ~= "starting" then return callback(false) end
 		if not ok then
 			go_local(self, err and err.code or "network")
 			callback(false)
 			return
 		end
-		self.client:call("POST", self.client:game_path("/runs"), { build_id = self.client.build_id, mode = self.mode }, function(started, run)
+		self.client:call("POST", self.client:game_path("/runs"), { build_id = self.client.build_id, mode = self.mode, arcade = self.client.arcade }, function(started, run)
 			-- Abandoned while waiting: give up the run the server just created.
 			if self.status ~= "starting" then
 				if started then
@@ -66,6 +67,11 @@ function M:start(callback)
 				return
 			end
 			self.run = run
+			if self.client.arcade and not run.arcade then
+				self.client:call("POST", self.client:game_path("/runs/" .. run.run_id .. "/abandon"), {}, function() end, true)
+				go_local(self, "unsupported_server")
+				return callback(false)
+			end
 			self.sim = self.game.new(run.seed, self.mode)
 			self.status = "ranked"
 			self.base_time, self.base_tick = self.now(), 0
@@ -236,7 +242,7 @@ end
 
 function M:poll_finish()
 	self.client:call("POST", run_path(self, "finish"), { tick = self.tick }, function(ok, res)
-		if ok and res.status == "verifying" then
+		if ok and (res.status == "verifying" or res.status == "finished" and res.published == false) then
 			self.retry_at = self.now() + (res.retry_after_ms or 1000) / 1000
 			return
 		end

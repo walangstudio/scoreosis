@@ -21,7 +21,7 @@ A leaderboard that accepts a score from the client is a leaderboard of whoever e
 
 ## Features
 
-- **Global and country leaderboards per platform.** Web, Windows, Android and the rest rank separately; the API also filters by store. Each player appears once with their best run.
+- **Global and country leaderboards per platform.** Web, Windows, Android and the rest rank separately; the API also filters by store. Each named run appears separately; authenticated responses identify the latest entry for highlighting.
 - **Modes.** A game with stages or tracks gets one board per mode.
 - **Achievements, local and verified.** Verified progress runs on the BadgeTrip engine, committed in one transaction with the run result. Games track local progress with the same rules and show both.
 - **Guest identity** per game installation. No accounts, no personal data.
@@ -55,7 +55,7 @@ pnpm deploy:production
 
 ## How it works
 
-1. The game creates a guest and starts a ranked run. The server returns a seed.
+1. The game creates a guest and starts a ranked run. Guest registration can finish on the menu; timed runs begin only on Play. The server checks disabled rulesets and reserves daily quota in one D1 batch, then returns a seed.
 2. The game steps its simulation at 60 Hz and sends each second of button inputs with a state checksum.
 3. The player's Durable Object checks timing and sequence, stores the inputs and replays them in the verifier.
 4. A checksum mismatch rejects the run. At the terminal tick, one transaction records the result, the BadgeTrip achievements and an outbox row.

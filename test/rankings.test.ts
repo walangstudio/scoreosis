@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { type PublishedResult, publishResult } from '../src/leaderboard.js';
+import { type PublishedResult, playerRank, publishResult } from '../src/leaderboard.js';
 import { api } from './client.js';
 import { RULESET } from './fixtures.js';
 
@@ -54,15 +54,16 @@ describe('leaderboards', () => {
     await result(id('fay'), 100);
   });
 
-  it('ranks one personal best per player, ties share a rank in acceptance order', async () => {
+  it('ranks individual entries, ties share a rank in acceptance order', async () => {
     const body = await board();
     expect(body.entries).toEqual([
       { rank: 1, name: 'ana', score: 500 },
       { rank: 2, name: 'ben', score: 400 },
       { rank: 2, name: 'cy', score: 400 },
       { rank: 4, name: 'dee', score: 350 },
-      { rank: 5, name: 'eli', score: 200 },
-      { rank: 6, name: 'fay', score: 100 },
+      { rank: 5, name: 'ana', score: 300 },
+      { rank: 6, name: 'eli', score: 200 },
+      { rank: 7, name: 'fay', score: 100 },
     ]);
   });
 
@@ -114,6 +115,7 @@ describe('leaderboards', () => {
     await result(user, 500, { country: 'CA', runtime: 'windows', channel: 'itch_io' });
     expect((await board('?country=CA&runtime=web')).entries).toEqual([
       { rank: 1, name: 'web-provider-player', score: 200 },
+      { rank: 2, name: 'web-provider-player', score: 100 },
     ]);
     expect((await board('?country=CA&runtime=web&channel=itch_io')).entries).toEqual([
       { rank: 1, name: 'web-provider-player', score: 100 },
@@ -149,5 +151,30 @@ describe('leaderboards', () => {
       name: 'zed',
       score: 50,
     });
+  });
+  it('identifies the latest own entry separately from the best, including tied scores', async () => {
+    const own = await player('test-001');
+    const other = await player('test-002');
+    const filter = {
+      game: 'ahsteroids',
+      board: 'classic',
+      country: 'NZ',
+      runtime: 'web',
+      channel: null,
+    };
+    await result(own, 500, { country: 'NZ' });
+    await result(other, 100, { country: 'NZ' });
+    const latest = await result(own, 100, { country: 'NZ' });
+    expect(await playerRank(env.DB, filter, own)).toEqual({
+      rank: 1,
+      score: 500,
+      latest_position: 3,
+    });
+    await result(own, 1000, { country: 'NZ', runtime: 'windows' });
+    expect((await playerRank(env.DB, filter, own))?.latest_position).toBe(3);
+    await env.DB.prepare('UPDATE results SET suppressed = 1 WHERE run_id = ?')
+      .bind(latest.run_id)
+      .run();
+    expect((await playerRank(env.DB, filter, own))?.latest_position).toBe(1);
   });
 });

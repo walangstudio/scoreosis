@@ -60,6 +60,7 @@ type RunRow = {
   score: number | null;
   facts: string | null;
   finalized_at: number | null;
+  arcade: number;
 };
 
 type InputRow = {
@@ -79,7 +80,7 @@ CREATE TABLE IF NOT EXISTS runs (
   status TEXT NOT NULL, reason TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
   baseline_ms INTEGER NOT NULL, baseline_tick INTEGER NOT NULL, paused_at INTEGER,
   paused_total_ms INTEGER NOT NULL DEFAULT 0, resumed_at INTEGER, final_tick INTEGER, score INTEGER, facts TEXT,
-  finalized_at INTEGER
+  finalized_at INTEGER, arcade INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS runs_status ON runs (status);
 CREATE TABLE IF NOT EXISTS inputs (
@@ -97,6 +98,7 @@ CREATE TABLE IF NOT EXISTS outbox (
 const ADDED_COLUMNS = [
   ['runs', 'mode', 'TEXT'],
   ['runs', 'resumed_at', 'INTEGER'],
+  ['runs', 'arcade', 'INTEGER NOT NULL DEFAULT 0'],
 ] as const;
 
 export function migrate(sql: SqlStorage): void {
@@ -119,6 +121,7 @@ export type InputChunk = {
 };
 
 export type StartResult = {
+  arcade?: boolean;
   run_id: string;
   seed: number;
   ruleset: string;
@@ -202,6 +205,7 @@ export class PlayerSession extends DurableObject<Env> {
     buildId: string,
     country: string | null,
     mode: string | null,
+    arcade = false,
   ): Promise<{ ok: true; run: StartResult } | Failure> {
     return this.guard(secretHash, async () => {
       const build = this.build(buildId);
@@ -209,14 +213,7 @@ export class PlayerSession extends DurableObject<Env> {
       this.assertNoActiveRun(Date.now());
       const { success } = await this.env.API_LIMITER.limit({ key: `runs:${build.game}:${player}` });
       if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
-      const disabled = await this.env.DB.prepare(
-        'SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?',
-      )
-        .bind(build.game, build.ruleset.ruleset)
-        .first();
-      if (disabled)
-        throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
-      await admit(this.env);
+      await admit(this.env, build.game, build.ruleset.ruleset);
       // The awaits above let other requests in; check again before creating the run.
       const now = Date.now();
       this.assertNoActiveRun(now);
@@ -226,7 +223,7 @@ export class PlayerSession extends DurableObject<Env> {
       const expiresAt = now + RUN_EXPIRY_MS;
       this.sql.exec(
         `INSERT INTO runs (id, build, ruleset, board, mode, runtime, channel, country, seed, status, created_at,
-          expires_at, baseline_ms, baseline_tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0)`,
+          expires_at, baseline_ms, baseline_tick, arcade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?)`,
         runId,
         build.id,
         build.ruleset.ruleset,
@@ -239,6 +236,7 @@ export class PlayerSession extends DurableObject<Env> {
         now,
         expiresAt,
         now,
+        arcade ? 1 : 0,
       );
       await this.scheduleAlarm();
       log('run_started', {
@@ -248,6 +246,7 @@ export class PlayerSession extends DurableObject<Env> {
       });
       return {
         run: {
+          ...(arcade ? { arcade: true } : {}),
           run_id: runId,
           seed,
           ruleset: build.ruleset.ruleset,
@@ -450,6 +449,32 @@ export class PlayerSession extends DurableObject<Env> {
     return this.guard(secretHash, async () => ({ achievements: await this.catalog() }));
   }
 
+  async submitEntry(secretHash: string, runId: string, name: string) {
+    return this.guard(secretHash, async () => {
+      const run = this.run(runId);
+      if (!run.arcade) throw new ApiError('forbidden', 'run does not support arcade entries');
+      if (
+        run.status === 'rejected' ||
+        run.status === 'expired' ||
+        (run.status === 'finished' && (run.score ?? 0) <= 0)
+      )
+        throw new ApiError('run_rejected', 'run has no positive verified score');
+      if (run.status !== 'finished')
+        throw new ApiError('run_not_active', 'entry requires a positive verified arcade run');
+      const { game, player } = this.identity();
+      const entry = await this.env.DB.prepare(
+        `UPDATE results SET entry_name = coalesce(entry_name, ?)
+         WHERE run_id = ? AND game_id = ? AND player_id = ?
+         RETURNING entry_name`,
+      )
+        .bind(name, runId, game.id, player)
+        .first<{ entry_name: string }>();
+      if (!entry) throw new ApiError('run_not_active', 'result publication is pending');
+      if (entry.entry_name !== name) throw new ApiError('entry_locked', 'entry already submitted');
+      return { entry: { display_name: entry.entry_name } };
+    });
+  }
+
   // --- profile ----------------------------------------------------------------
 
   async profile(
@@ -635,6 +660,7 @@ export class PlayerSession extends DurableObject<Env> {
     const build = this.build(run.build);
     const { game, player } = this.identity();
     const result: PublishedResult = {
+      ...(run.arcade ? { entry_name: null } : {}),
       run_id: run.id,
       game_id: build.game,
       board: run.board,
@@ -989,16 +1015,25 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 /** Stops new ranked runs before the daily free-plan budget is exhausted. */
-async function admit(env: Env): Promise<void> {
+async function admit(env: Env, game: string, ruleset: string): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  const row = await env.DB.prepare(
-    `INSERT INTO usage (day, runs_started) VALUES (?1, 1)
-     ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
-     RETURNING runs_started`,
-  )
-    .bind(day, Number(env.MAX_RUNS_PER_DAY))
-    .first();
-  if (!row) {
+  const [disabled, admitted] = await env.DB.batch([
+    env.DB.prepare('SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?').bind(
+      game,
+      ruleset,
+    ),
+    env.DB.prepare(
+      `INSERT INTO usage (day, runs_started)
+       SELECT ?1, 1 WHERE NOT EXISTS (
+         SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4
+       )
+       ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
+       RETURNING runs_started`,
+    ).bind(day, Number(env.MAX_RUNS_PER_DAY), game, ruleset),
+  ]);
+  if (disabled?.results.length)
+    throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
+  if (!admitted?.results.length) {
     log('capacity_reached', { day });
     throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
   }

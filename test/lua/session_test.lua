@@ -185,6 +185,22 @@ test("finishes after the chunk in flight lands and polls while verifying", funct
 	eq(result.result.score, 90)
 end)
 
+test("waits for publication before reporting a verified result", function()
+	local f, s = started(1)
+	local result
+	s.on_result = function(sess) result = sess end
+	play(f, s, 1)
+	f.answer(200, { status = "active" })
+	f.answer(200, { status = "finished", score = 1, published = false })
+	eq(s.status, "finishing")
+	eq(result, nil)
+	f.time = f.time + 1.1
+	s:update()
+	f.answer(200, { status = "finished", score = 1, published = true })
+	eq(s.status, "verified")
+	eq(result.result.score, 1)
+end)
+
 test("leaderboards default to the build's own runtime", function()
 	local f = fake()
 	local c = client_mod.new(f.platform, "https://x", "toy", "toy-android-google_play-1.0.0")

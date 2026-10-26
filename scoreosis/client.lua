@@ -9,7 +9,15 @@
 local M = {}
 M.__index = M
 
-function M.new(platform, base_url, game_id, build_id)
+function M.new(platform, base_url, game_id, build_id, display_name)
+	local entries = {}
+	for _, entry in ipairs(platform.load_entries and platform.load_entries() or {}) do
+		if type(entry) == "table" and type(entry.run_id) == "string"
+			and #entry.run_id == 36 and entry.run_id:match("^[%x%-]+$")
+			and type(entry.display_name) == "string" and #entry.display_name >= 2 and #entry.display_name <= 16 then
+			entries[#entries + 1] = {run_id=entry.run_id, display_name=entry.display_name}
+		end
+	end
 	return setmetatable({
 		platform = platform,
 		base_url = base_url,
@@ -18,6 +26,8 @@ function M.new(platform, base_url, game_id, build_id)
 		-- Build ids are <game>-<runtime>-<channel>-<version>.
 		runtime = build_id:match("^[^-]+%-([^-]+)%-[^-]+%-.+$"),
 		token = platform.load_token(),
+		display_name = display_name,
+		entries = entries,
 	}, M)
 end
 
@@ -85,15 +95,21 @@ end
 -- filters: { board, mode, country, runtime, channel, page, me }. Platforms never
 -- mix: runtime defaults to this build's own.
 function M:leaderboard(filters, callback)
+	if not self.arcade and self.display_name and (self.synced_name ~= self.display_name or self.synced_token ~= self.token) then
+		return self:ensure_player(function(ok, err)
+			if ok then self:leaderboard(filters, callback) else callback(false, err) end
+		end)
+	end
 	local query = {}
 	for _, key in ipairs({ "board", "mode", "country", "runtime", "channel", "page" }) do
 		local value = filters[key]
 		if key == "runtime" and value == nil then value = self.runtime end
 		if value ~= nil then query[#query + 1] = key .. "=" .. tostring(value) end
 	end
-	if filters.me and self.token then query[#query + 1] = "me=1" end
+	local personal = (self.arcade or filters.me or self.display_name ~= nil) and self.token ~= nil
+	if personal then query[#query + 1] = "me=1" end
 	local path = self:game_path("/leaderboards") .. (#query > 0 and "?" .. table.concat(query, "&") or "")
-	self:call("GET", path, nil, callback, filters.me and self.token ~= nil)
+	self:call("GET", path, nil, callback, personal)
 end
 
 function M:achievements(callback)
@@ -105,10 +121,35 @@ function M:profile(callback)
 	self:call("GET", self:game_path("/me/profile"), nil, callback, true)
 end
 
--- Saves the player's public name (2-16 letters, digits, single spaces).
+-- Saves the player's public name (2-16 letters, digits, single spaces or hyphens).
 -- callback(ok, { display_name = saved }) or (false, { code = "bad_request" | "rate_limited" | ... }).
 function M:set_name(name, callback)
 	self:call("PATCH", self:game_path("/me/profile"), { display_name = name }, callback, true)
+end
+
+function M:ensure_player(callback)
+	self:ensure_guest(function(ok, err)
+		if not ok then return callback(false, err) end
+		local name, token = self.display_name, self.token
+		if not name or self.synced_name == name and self.synced_token == token then return callback(true) end
+		if self.naming then
+			self.naming[#self.naming + 1] = callback
+			return
+		end
+		self.naming = {callback}
+		self:set_name(name, function(saved, body)
+			if saved and (type(body.display_name) ~= "string" or body.display_name == "") then
+				saved, body = false, {code="invalid_response",message="Name was not confirmed",status=0}
+			end
+			local waiting = self.naming
+			self.naming = nil
+			if saved then self.synced_name, self.synced_token = name, token end
+			for _, done in ipairs(waiting) do
+				if saved and (self.display_name ~= name or self.token ~= token) then self:ensure_player(done)
+				else done(saved, body) end
+			end
+		end)
+	end)
 end
 
 function M:platform_best(callback)
@@ -119,6 +160,41 @@ function M:platform_best(callback)
 			or not (first.score >= 0 and first.score % 1 == 0)) then return callback(false) end
 		callback(true, first and first.score or 0)
 	end)
+end
+
+function M:queue_entry(run_id, name)
+	for _, entry in ipairs(self.entries) do
+		if entry.run_id == run_id then return entry.display_name == name end
+	end
+	self.entries[#self.entries + 1] = {run_id=run_id, display_name=name}
+	return not self.platform.save_entries or self.platform.save_entries(self.entries)
+end
+
+-- The queue belongs to the client, so leaving game over cannot cancel delivery.
+function M:update_entries(now)
+	if self.entry_request or #self.entries == 0 or now < (self.entry_retry_at or 0) then return end
+	local entry = self.entries[1]
+	self.entry_request = true
+	self:call("POST", self:game_path("/runs/" .. entry.run_id .. "/entry"), {display_name=entry.display_name}, function(ok, body)
+		self.entry_request = false
+		if ok and body.display_name ~= entry.display_name then
+			ok, body = false, {code="invalid_response", status=0}
+		end
+		local retry = not ok and (body.status == 0 or body.status == 429 or body.status >= 500 or body.code == "run_not_active")
+		if not retry then
+			table.remove(self.entries, 1)
+			if self.platform.save_entries then self.platform.save_entries(self.entries) end
+			self.entry_attempts = 0
+		else
+			table.remove(self.entries, 1)
+			self.entries[#self.entries + 1] = entry
+			if self.platform.save_entries then self.platform.save_entries(self.entries) end
+			self.entry_attempts = math.min((self.entry_attempts or 0) + 1, 5)
+		end
+		self.entry_retry_at = now + (retry and 2 ^ self.entry_attempts or 0)
+		self.entry_error = not ok and body.code or nil
+		if self.on_entry_result then self.on_entry_result(ok, entry.run_id, body) end
+	end, true)
 end
 
 return M
