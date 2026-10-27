@@ -165,6 +165,8 @@ export class PlayerSession extends DurableObject<Env> {
   private readonly sql: SqlStorage;
   private loaded: Loaded | undefined;
   private verifyQueue: Promise<void> = Promise.resolve();
+  /** A start is between its checks and its insert; requests interleave at its awaits. */
+  private starting = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -205,15 +207,30 @@ export class PlayerSession extends DurableObject<Env> {
     buildId: string,
     country: string | null,
     mode: string | null,
+    address: string,
     arcade = false,
   ): Promise<{ ok: true; run: StartResult } | Failure> {
     return this.guard(secretHash, async () => {
       const build = this.build(buildId);
       const { player } = this.identity();
       this.assertNoActiveRun(Date.now());
-      const { success } = await this.env.API_LIMITER.limit({ key: `runs:${build.game}:${player}` });
-      if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
-      await admit(this.env, build.game, build.ruleset.ruleset);
+      // A concurrent start would spend admission slots and then lose to this one.
+      if (this.starting)
+        throw new ApiError('run_active', 'another ranked start is in progress; retry shortly', {
+          reason: 'start_in_progress',
+        });
+      // Bad config fails before any limiter or quota is spent.
+      const limits = admissionLimits(this.env);
+      this.starting = true;
+      try {
+        const { success } = await this.env.API_LIMITER.limit({
+          key: `runs:${build.game}:${player}`,
+        });
+        if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
+        await admit(this.env, limits, build.game, build.ruleset.ruleset, address);
+      } finally {
+        this.starting = false;
+      }
       // The awaits above let other requests in; check again before creating the run.
       const now = Date.now();
       this.assertNoActiveRun(now);
@@ -1014,29 +1031,95 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Stops new ranked runs before the daily free-plan budget is exhausted. */
-async function admit(env: Env, game: string, ruleset: string): Promise<void> {
+/**
+ * Reserves one of today's ranked runs, globally and for the caller's network
+ * address, in one transaction. The address counter stops one past its share and
+ * the global counter moves only while the address is within it, so one address
+ * cannot spend everyone's runs. The address is stored as a keyed hash.
+ */
+async function admit(
+  env: Env,
+  { perDay, share, secret }: AdmissionLimits,
+  game: string,
+  ruleset: string,
+  address: string,
+): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  const [disabled, admitted] = await env.DB.batch([
+  const key = await addressHash(secret, `${day}:${address}`);
+  const open = `NOT EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4)
+    AND coalesce((SELECT runs_started FROM usage WHERE day = ?1), 0) < ?2`;
+  const args = [day, perDay, game, ruleset, key, share];
+  const [disabled, , admitted, counted] = await env.DB.batch([
     env.DB.prepare('SELECT 1 FROM disabled_rulesets WHERE game_id = ? AND ruleset = ?').bind(
       game,
       ruleset,
     ),
     env.DB.prepare(
-      `INSERT INTO usage (day, runs_started)
-       SELECT ?1, 1 WHERE NOT EXISTS (
-         SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4
-       )
-       ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1 WHERE runs_started < ?2
+      `INSERT INTO admissions (day, address, runs) SELECT ?1, ?5, 1 WHERE ${open}
+       ON CONFLICT (day, address) DO UPDATE SET runs = runs + 1 WHERE runs <= ?6`,
+    ).bind(...args),
+    env.DB.prepare(
+      `INSERT INTO usage (day, runs_started) SELECT ?1, 1 WHERE ${open}
+         AND (SELECT runs FROM admissions WHERE day = ?1 AND address = ?5) <= ?6
+       ON CONFLICT (day) DO UPDATE SET runs_started = runs_started + 1
        RETURNING runs_started`,
-    ).bind(day, Number(env.MAX_RUNS_PER_DAY), game, ruleset),
+    ).bind(...args),
+    env.DB.prepare('SELECT runs FROM admissions WHERE day = ? AND address = ?').bind(day, key),
   ]);
   if (disabled?.results.length)
     throw new ApiError('ruleset_disabled', 'ranked play is disabled for this build');
-  if (!admitted?.results.length) {
-    log('capacity_reached', { day });
-    throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
+  if (admitted?.results.length) return;
+  const runs = (counted?.results[0] as { runs: number } | undefined)?.runs ?? 0;
+  if (runs > share) {
+    log('address_limit_reached', { day });
+    throw new ApiError(
+      'address_limit',
+      'ranked runs from this network are used up today; local play is unaffected',
+    );
   }
+  log('capacity_reached', { day });
+  throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
+}
+
+type AdmissionLimits = { perDay: number; share: number; secret: string };
+
+function admissionLimits(env: Env): AdmissionLimits {
+  const secret = env.ADDRESS_KEY ?? '';
+  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
+  return {
+    secret,
+    // MAX_RUNS_PER_DAY = 0 pauses ranked play.
+    perDay: limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY', 0),
+    share: limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS', 1),
+  };
+}
+
+/** A run limit from wrangler.jsonc. A bad value is a deploy error, so it fails loudly like verifyBudget. */
+export function limitVar(value: string | undefined, name: string, min: number): number {
+  const n = Number(value);
+  if (!/^\d{1,9}$/.test(value ?? '') || n < min) {
+    throw new Error(`${name} must be an integer from ${min} to 999999999`);
+  }
+  return n;
+}
+
+// Only a successfully imported key is cached, so a failed import is retried next time.
+let hmacKey: { secret: string; key: CryptoKey } | undefined;
+
+/** HMAC-SHA256 under ADDRESS_KEY: a plain hash of an IPv4 address is reversible by brute force. */
+async function addressHash(secret: string, text: string): Promise<string> {
+  if (hmacKey?.secret !== secret) {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    hmacKey = { secret, key };
+  }
+  const mac = await crypto.subtle.sign('HMAC', hmacKey.key, new TextEncoder().encode(text));
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function verifyBudget(env: Env): number {

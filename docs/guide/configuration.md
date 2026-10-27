@@ -9,7 +9,8 @@ Set in `vars` (top level for local dev, `env.staging.vars` and `env.production.v
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `VERIFY_INSTRUCTIONS` | `1000000` | Lua instructions the verifier may spend per request, about 9 ms of CPU. Unverified input queues and drains in later requests and alarms. Must be an integer of at least 10000. Raise it only after measuring CPU in staging. |
-| `MAX_RUNS_PER_DAY` | `750` (staging `500`) | New ranked runs admitted per UTC day across all games. Runs in progress always continue. Set it from measured rows written per run and the share of the account's free quota you can spend. |
+| `MAX_RUNS_PER_DAY` | `750` (staging `500`) | New ranked runs admitted per UTC day across all games. Runs in progress always continue. Set it from measured rows written per run and the share of the account's free quota you can spend. `0` pauses ranked play (`capacity`). A missing or malformed value fails every ranked start with 500 `internal`. |
+| `MAX_RUNS_PER_ADDRESS` | `75` (staging `50`) | Share of `MAX_RUNS_PER_DAY` one network address (IPv4 address or IPv6 /64) may start per UTC day, whatever the number of guests. Stored as a keyed hash (`ADDRESS_KEY`), pruned after a day. Raise it if many legitimate players share one address. Requests without a `cf-connecting-ip` header (a self-hosted `wrangler dev` reached directly) all share one address, and off Cloudflare a client can set that header itself. At least `1`; a missing or malformed value fails every ranked start with 500 `internal`. |
 | `ALLOWED_ORIGINS` | empty | Comma-separated browser origins allowed to call the API. Empty allows none; native clients send no origin. |
 
 ## Secrets
@@ -17,6 +18,7 @@ Set in `vars` (top level for local dev, `env.staging.vars` and `env.production.v
 | Secret | What it does |
 | --- | --- |
 | `ADMIN_TOKEN` | Bearer token for `/v1/admin/*`. At least 32 characters; admin routes are disabled without it. Set with `wrangler secret put ADMIN_TOKEN --env <env>`; locally in `.dev.vars`. |
+| `ADDRESS_KEY` | HMAC key for the per-address run share; the stored address is HMAC-SHA256 of the UTC day and the address. At least 32 characters. Ranked run starts fail while it is missing. Set with `wrangler secret put ADDRESS_KEY --env <env>`; locally in `.dev.vars`. |
 
 ## Bindings
 

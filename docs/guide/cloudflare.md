@@ -39,6 +39,8 @@ The Durable Objects create their own SQLite tables on first use; no step is need
 ```sh
 openssl rand -hex 32 | npx wrangler secret put ADMIN_TOKEN --env staging
 openssl rand -hex 32 | npx wrangler secret put ADMIN_TOKEN --env production
+openssl rand -hex 32 | npx wrangler secret put ADDRESS_KEY --env staging
+openssl rand -hex 32 | npx wrangler secret put ADDRESS_KEY --env production
 ```
 
 Keep each token in your password manager. Admin routes refuse every request while the secret is missing or shorter than 32 characters. Never ship it in a game.
@@ -81,6 +83,8 @@ Any other branch or tag is skipped, and so is a fork. The job creates the D1 dat
 3. Under **Environments**, limit `staging` to the `main` branch and `production` to `v*` tags, so GitHub refuses a deploy job on any other ref. Add required reviewers to `production` if a tag should wait for approval.
 
 To have the workflow upload `ADMIN_TOKEN` (step 4), store it as an `ADMIN_TOKEN` secret on each GitHub environment: `gh secret set ADMIN_TOKEN --env production` (paste the token you keep; generate it with `openssl rand -hex 32`). Without it the admin routes refuse every request.
+
+`ADDRESS_KEY` keys the hash of caller addresses for the per-address run share. Store one per environment the same way (`openssl rand -hex 32 | gh secret set ADDRESS_KEY --env production`); nobody needs to keep it, and rotating it only resets that day's counters. The workflow refuses to deploy without it, because ranked run starts fail closed while it is missing.
 
 ```sh
 gh variable set CLOUDFLARE_ACCOUNT_ID --body <account-id>
