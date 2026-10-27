@@ -19,7 +19,7 @@ Every failure has the same envelope and a stable `code`:
 | `not_found` / `unknown_game` | 404 | No such route, run or game. A run belongs to one player. | No. |
 | `unsupported_build` | 422 | Build not registered for ranked play. | No. Play locally. |
 | `ruleset_disabled` | 422 | Ranked play disabled for this build's ruleset. | No. Play locally. |
-| `run_active` | 409 | The player already has an active run, or another start is in progress. | Finish or abandon the active run; after a concurrent start, retry shortly. |
+| `run_active` | 409 | The player already has an active run, or another start is in progress. | Finish or abandon the active run; when `details.reason` is `start_in_progress`, another start is in flight: retry shortly. |
 | `run_not_active` | 409 | The run is paused, expired, rejected or finished. `details.reason` says why. | No. The run is local only. |
 | `sequence_conflict` | 409 | Wrong `seq`/`from_tick`, or a different body for an accepted `seq`. | Resend the chunk the server expects. |
 | `timing_rejected` | 422 | Input ahead of real time or older than the 1.5 s window. The run is rejected. | No. |

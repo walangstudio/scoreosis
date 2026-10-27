@@ -73,6 +73,8 @@ describe('per-address admission', () => {
       });
     const results = await Promise.all([start(), start()]);
     expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const refused = results.find((r) => r.status === 409);
+    expect(refused?.body.error.code).toBe('run_active');
     expect([await used(), await attempts()]).toEqual([usedBefore + 1, attemptsBefore + 1]);
   });
 

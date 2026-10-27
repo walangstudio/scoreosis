@@ -216,7 +216,9 @@ export class PlayerSession extends DurableObject<Env> {
       this.assertNoActiveRun(Date.now());
       // A concurrent start would spend admission slots and then lose to this one.
       if (this.starting)
-        throw new ApiError('run_active', 'another ranked start is in progress; retry shortly');
+        throw new ApiError('run_active', 'another ranked start is in progress; retry shortly', {
+          reason: 'start_in_progress',
+        });
       // Bad config fails before any limiter or quota is spent.
       const limits = admissionLimits(this.env);
       this.starting = true;
@@ -1037,13 +1039,13 @@ function timingSafeEqual(a: string, b: string): boolean {
  */
 async function admit(
   env: Env,
-  { perDay, share }: AdmissionLimits,
+  { perDay, share, secret }: AdmissionLimits,
   game: string,
   ruleset: string,
   address: string,
 ): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  const key = await addressHash(env, `${day}:${address}`);
+  const key = await addressHash(secret, `${day}:${address}`);
   const open = `NOT EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4)
     AND coalesce((SELECT runs_started FROM usage WHERE day = ?1), 0) < ?2`;
   const args = [day, perDay, game, ruleset, key, share];
@@ -1079,12 +1081,13 @@ async function admit(
   throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
 }
 
-type AdmissionLimits = { perDay: number; share: number };
+type AdmissionLimits = { perDay: number; share: number; secret: string };
 
 function admissionLimits(env: Env): AdmissionLimits {
-  if ((env.ADDRESS_KEY ?? '').length < 32)
-    throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
+  const secret = env.ADDRESS_KEY ?? '';
+  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
   return {
+    secret,
     // MAX_RUNS_PER_DAY = 0 pauses ranked play.
     perDay: limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY', 0),
     share: limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS', 1),
@@ -1104,9 +1107,7 @@ export function limitVar(value: string | undefined, name: string, min: number): 
 let hmacKey: { secret: string; key: CryptoKey } | undefined;
 
 /** HMAC-SHA256 under ADDRESS_KEY: a plain hash of an IPv4 address is reversible by brute force. */
-async function addressHash(env: Env, text: string): Promise<string> {
-  const secret = env.ADDRESS_KEY ?? '';
-  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
+async function addressHash(secret: string, text: string): Promise<string> {
   if (hmacKey?.secret !== secret) {
     const key = await crypto.subtle.importKey(
       'raw',
