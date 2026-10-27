@@ -31,7 +31,7 @@ return M
 Two reference shapes:
 
 - Ah!Steroids `game/ranked.lua`: the sim is its own table, input bits are held buttons.
-- Sneak `script/ranked.lua`: inputs are discrete actions packed into the bits (`first + 10 * second`, `buttons = 7`). The controller instance is the sim. Ranked actions are queued and applied at tick boundaries; local actions apply immediately. The session adapter's `step` advances time (`script/online.lua`).
+- Sneak `script/ranked.lua`: inputs are discrete actions packed into the bits (`first + 10 * second`, `buttons = 7`). The controller instance is the sim. Ranked actions are queued and applied inside the session through `ranked.step`; local actions apply immediately. Applying a fatal movement before `session:step` loses that final input because the session sees an already finished game.
 
 - ebakuw8 `modules/ranked.lua`: one run is one stage, so the module exports `modes` (stage ids) and `new(seed, mode)` builds that stage; each mode has its own leaderboard. Up to three 4-bit input codes per tick (`first + 16 * second + 256 * third`, `buttons = 12`). The controller is the sim; ranked play queues codes and applies them at the tick boundary (local play applies them at once), and `ranked.advance` steps without dropping the events the game presents.
 

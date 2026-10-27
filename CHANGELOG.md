@@ -2,6 +2,10 @@
 
 All notable changes to Scoreosis are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+- Accept Sneak 0.2.2 for itch browser play on its existing verified ruleset. This game update fixes missing Global scores after walking into the snake or a spike.
+
 ## [0.3.1] - 2026-10-27
 
 ### Security
