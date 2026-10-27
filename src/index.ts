@@ -477,6 +477,8 @@ function addressKey(request: Request): string {
   const [head = '', tail] = ip.split('::');
   const h = head ? head.split(':') : [];
   const t = tail ? tail.split(':') : [];
+  // Not a valid IPv6 address (Cloudflare never sends one): key it as given.
+  if (tail === undefined ? h.length !== 8 : h.length + t.length > 7) return ip;
   const groups = tail === undefined ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
   return `${groups
     .slice(0, 4)

@@ -95,6 +95,7 @@ describe('per-address admission', () => {
 
     for (let i = 0; i < CAP; i++) await startFrom('198.51.100.92');
     expect((await startFrom('::ffff:198.51.100.92')).status).toBe(429);
+    expect((await startFrom('1:2:3:4::5:6:7:8:9')).status).toBe(201);
   });
 
   it('spends no counter for a disabled ruleset or a full day', async () => {
