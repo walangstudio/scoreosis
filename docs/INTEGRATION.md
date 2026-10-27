@@ -109,3 +109,5 @@ A game with levels or tracks exports `M.modes`, an ordered list of ids. The run 
 ## Automatic play
 
 `scoreosis.autoplay.start(session, timer, callback)` attempts a session and calls back with the active session, or nil when startup fails or exceeds eight seconds. It returns a cancellation function for leaving the pending screen. Failed, timed-out, and cancelled starts are abandoned; late replies cannot replace local play. Both games use this path for Play and Retry, keeping validation states out of their visible UI. Local results are never promoted to Global. Overlapping starts share a pending credential registration; retrying does not create a competing installation identity.
+
+Completed runs continue uploading after session:abandon() detaches them from the game screen. Keep calling client:update_entries(now) on menus: it also polls the finishing session. Automatic Retry waits for that upload before requesting a new run. This does not survive closing the application or a disconnect beyond the server window.

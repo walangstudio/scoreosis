@@ -8,6 +8,12 @@
   },
   "builds": [
     {
+      "id": "sneak-web-itch_io-0.2.3",
+      "ruleset": "7411b66ea8266106",
+      "runtime": "web",
+      "channel": "itch_io"
+    },
+    {
       "id": "sneak-web-itch_io-0.2.2",
       "ruleset": "7411b66ea8266106",
       "runtime": "web",

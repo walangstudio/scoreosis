@@ -46,7 +46,7 @@ These are constants in `src/session.ts` and `src/index.ts`, not settings. Changi
 | --- | --- |
 | Tick rate | 60 Hz |
 | Ticks per input chunk | 120 max, 60 expected |
-| Late input window | 90 ticks (1.5 s) |
+| Late input window | 600 ticks (10 s) |
 | Input ahead of real time | 6 ticks + 0.1%, at most 60 |
 | Pause | 15 min each, 60 min per run |
 | Run lifetime | 24 h |

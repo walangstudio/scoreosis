@@ -172,6 +172,10 @@ end
 
 -- The queue belongs to the client, so leaving game over cannot cancel delivery.
 function M:update_entries(now)
+	if self.finishing then
+		self.finishing:update()
+		if self.finishing.status ~= "finishing" then self.finishing = nil end
+	end
 	if self.entry_request or #self.entries == 0 or now < (self.entry_retry_at or 0) then return end
 	local entry = self.entries[1]
 	self.entry_request = true

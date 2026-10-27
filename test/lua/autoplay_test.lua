@@ -47,4 +47,32 @@ f.cancel()
 f.reply(true)
 f.timeout()
 assert(#f.results == 0 and f.abandoned == 1, "leaving a pending play must not start a game")
-print("7 automatic play checks, 0 failures")
+local waiting_client = {finishing = {}}
+local scheduled, next_id, starts, results = {}, 0, 0, 0
+local clock = {
+	delay = function(seconds, repeating, callback)
+		next_id = next_id + 1
+		scheduled[next_id] = callback
+		return next_id
+	end,
+	cancel = function(id) scheduled[id] = nil end,
+}
+local waiting_session = {
+	client = waiting_client,
+	start = function(_, done) starts = starts + 1; done(true) end,
+	abandon = function() end,
+}
+autoplay.start(waiting_session, clock, function() results = results + 1 end)
+assert(starts == 0, "Retry must wait until the previous run finishes uploading")
+waiting_client.finishing = nil
+scheduled[2]()
+assert(starts == 1 and results == 1)
+
+waiting_client.finishing = {}
+local cancel = autoplay.start(waiting_session, clock, function() results = results + 1 end)
+local later = scheduled[next_id]
+cancel()
+waiting_client.finishing = nil
+later()
+assert(starts == 1 and results == 1, "cancelled Retry must not start after the old upload completes")
+print("9 automatic play checks, 0 failures")

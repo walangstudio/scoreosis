@@ -13,8 +13,8 @@ import luaWasm from './vm/lua51.wasm';
 export const TICK_RATE = 60;
 /** Ticks one input request may carry; two seconds lets a client catch up after a hiccup. */
 export const CHUNK_MAX_TICKS = 120;
-/** How far behind real time accepted input may be (1.5 s). */
-export const WINDOW_TICKS = 90;
+/** Bounded upload delay for transient network stalls (10 s). */
+export const WINDOW_TICKS = 600;
 /** Client clocks may run this far ahead of the server's expectation. */
 const FUTURE_SLACK_TICKS = 6;
 /** Allowed client clock gain, capped so a long run cannot bank a large lead. */
@@ -24,7 +24,7 @@ export const PAUSE_MAX_MS = 15 * 60_000;
 export const PAUSE_TOTAL_MS = 60 * 60_000;
 export const RUN_EXPIRY_MS = 24 * 3_600_000;
 /** Longest gap between the last input and the pause request: the flush and pause round trips. */
-const PAUSE_GRACE_MS = 2_000;
+const PAUSE_GRACE_MS = (WINDOW_TICKS * 1000) / TICK_RATE;
 /** Most start-up latency the first chunk may absorb. */
 const START_GRACE_MS = 5_000;
 const CHECKPOINT_EVERY_TICKS = 600;
