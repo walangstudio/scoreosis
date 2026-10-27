@@ -165,6 +165,8 @@ export class PlayerSession extends DurableObject<Env> {
   private readonly sql: SqlStorage;
   private loaded: Loaded | undefined;
   private verifyQueue: Promise<void> = Promise.resolve();
+  /** A start is between its checks and its insert; requests interleave at its awaits. */
+  private starting = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -212,9 +214,19 @@ export class PlayerSession extends DurableObject<Env> {
       const build = this.build(buildId);
       const { player } = this.identity();
       this.assertNoActiveRun(Date.now());
-      const { success } = await this.env.API_LIMITER.limit({ key: `runs:${build.game}:${player}` });
-      if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
-      await admit(this.env, build.game, build.ruleset.ruleset, address);
+      // A concurrent start would spend admission slots and then lose to this one.
+      if (this.starting)
+        throw new ApiError('run_active', 'finish or abandon the active ranked run first');
+      this.starting = true;
+      try {
+        const { success } = await this.env.API_LIMITER.limit({
+          key: `runs:${build.game}:${player}`,
+        });
+        if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
+        await admit(this.env, build.game, build.ruleset.ruleset, address);
+      } finally {
+        this.starting = false;
+      }
       // The awaits above let other requests in; check again before creating the run.
       const now = Date.now();
       this.assertNoActiveRun(now);
@@ -1023,8 +1035,8 @@ function timingSafeEqual(a: string, b: string): boolean {
  */
 async function admit(env: Env, game: string, ruleset: string, address: string): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  const perDay = positiveInt(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY');
-  const share = positiveInt(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS');
+  const perDay = limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY');
+  const share = limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS');
   const key = await addressHash(env, `${day}:${address}`);
   const open = `NOT EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4)
     AND coalesce((SELECT runs_started FROM usage WHERE day = ?1), 0) < ?2`;
@@ -1061,24 +1073,38 @@ async function admit(env: Env, game: string, ruleset: string, address: string): 
   throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
 }
 
-function positiveInt(value: string | undefined, name: string): number {
+// Misconfiguration stops ranked starts with a non-retryable error, never a 500 clients retry.
+function misconfigured(problem: string): never {
+  log('admission_misconfigured', { problem });
+  throw new ApiError('capacity', 'ranked play is unavailable; local play is unaffected');
+}
+
+/** A run limit; 0 pauses ranked play. */
+function limitVar(value: string | undefined, name: string): number {
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 1) throw new Error(`${name} must be a positive integer`);
+  if (!Number.isInteger(n) || n < 0) misconfigured(`${name} must be a non-negative integer`);
   return n;
 }
+
+let hmacKey: { secret: string; key: Promise<CryptoKey> } | undefined;
 
 /** HMAC-SHA256 under ADDRESS_KEY: a plain hash of an IPv4 address is reversible by brute force. */
 async function addressHash(env: Env, text: string): Promise<string> {
   const secret = env.ADDRESS_KEY ?? '';
-  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(text));
+  if (secret.length < 32) misconfigured('ADDRESS_KEY must be at least 32 characters');
+  if (hmacKey?.secret !== secret) {
+    hmacKey = {
+      secret,
+      key: crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+      ),
+    };
+  }
+  const mac = await crypto.subtle.sign('HMAC', await hmacKey.key, new TextEncoder().encode(text));
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 

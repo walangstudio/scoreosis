@@ -61,6 +61,20 @@ describe('per-address admission', () => {
     expect(await used()).toBe(before + CAP);
   });
 
+  it('spends one slot when the same player starts twice at once', async () => {
+    const [usedBefore, attemptsBefore] = [await used(), await attempts()];
+    const token = await guest();
+    const start = () =>
+      api('/v1/games/ahsteroids/runs', {
+        token,
+        body: { build_id: BUILD },
+        headers: { 'cf-connecting-ip': '198.51.100.95' },
+      });
+    const results = await Promise.all([start(), start()]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect([await used(), await attempts()]).toEqual([usedBefore + 1, attemptsBefore + 1]);
+  });
+
   it('groups IPv6 by /64 in every spelling, and IPv4-mapped addresses by IPv4', async () => {
     const v6 = [
       '2001:db8:7:7::1',

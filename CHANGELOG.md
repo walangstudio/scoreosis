@@ -9,6 +9,8 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 - One network address (IPv4 address or IPv6 /64) may start at most `MAX_RUNS_PER_ADDRESS` ranked runs per UTC day (75 production, 50 staging), however many guests it creates. Previously one guest could start and abandon runs until the global `MAX_RUNS_PER_DAY` allowance was gone. Over the share, run start returns `429 address_limit` with `Retry-After` set to the next UTC midnight, and the game plays locally. The address is stored only as an HMAC under the new `ADDRESS_KEY` secret and pruned by the daily job (D1 migration `0004`). Over-share attempts write nothing.
 - IPv6 rate-limit keys parse every spelling of an address; IPv4-mapped IPv6 counts as its IPv4 address.
 - Deploys require the `ADDRESS_KEY` secret on each GitHub environment.
+- A player starting two runs at once spends one admission slot, not two.
+- Missing or malformed run limits stop ranked starts with `capacity` and log `admission_misconfigured` instead of a retryable 500. `MAX_RUNS_PER_DAY = 0` pauses ranked play.
 - Security docs name the remaining limits: legal-input bots with the start seed, client-claimed platform labels, shared itch browser storage.
 
 ## [0.3.0] - 2026-10-27
