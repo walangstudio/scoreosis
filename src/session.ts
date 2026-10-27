@@ -1091,7 +1091,7 @@ function admissionLimits(env: Env): AdmissionLimits {
   };
 }
 
-/** An integer setting from wrangler.jsonc. A bad value is a deploy error, so it fails loudly like verifyBudget. */
+/** A run limit from wrangler.jsonc. A bad value is a deploy error, so it fails loudly like verifyBudget. */
 export function limitVar(value: string | undefined, name: string, min: number): number {
   const n = Number(value);
   if (!/^\d{1,9}$/.test(value ?? '') || n < min) {
@@ -1100,29 +1100,33 @@ export function limitVar(value: string | undefined, name: string, min: number): 
   return n;
 }
 
-let hmacKey: { secret: string; key: Promise<CryptoKey> } | undefined;
+// Only a successfully imported key is cached, so a failed import is retried next time.
+let hmacKey: { secret: string; key: CryptoKey } | undefined;
 
 /** HMAC-SHA256 under ADDRESS_KEY: a plain hash of an IPv4 address is reversible by brute force. */
 async function addressHash(env: Env, text: string): Promise<string> {
-  const secret = env.ADDRESS_KEY;
+  const secret = env.ADDRESS_KEY ?? '';
+  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
   if (hmacKey?.secret !== secret) {
-    hmacKey = {
-      secret,
-      key: crypto.subtle.importKey(
-        'raw',
-        new TextEncoder().encode(secret),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign'],
-      ),
-    };
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    hmacKey = { secret, key };
   }
-  const mac = await crypto.subtle.sign('HMAC', await hmacKey.key, new TextEncoder().encode(text));
+  const mac = await crypto.subtle.sign('HMAC', hmacKey.key, new TextEncoder().encode(text));
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function verifyBudget(env: Env): number {
-  return limitVar(env.VERIFY_INSTRUCTIONS, 'VERIFY_INSTRUCTIONS', 10_000);
+  const budget = Number(env.VERIFY_INSTRUCTIONS);
+  if (!Number.isInteger(budget) || budget < 10_000) {
+    throw new Error('VERIFY_INSTRUCTIONS must be an integer >= 10000');
+  }
+  return budget;
 }
 
 /** Errors raised by the Wasm verifier itself, as opposed to storage or bugs here. */
