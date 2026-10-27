@@ -58,7 +58,7 @@ export default {
   },
 
   async scheduled(_controller, env): Promise<void> {
-    // Each cleanup logs its own failure so neither can stop the other.
+    // First and caught, so neither cleanup can stop the other: a results-prune throw comes after it.
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     await env.DB.prepare('DELETE FROM admissions WHERE day < ?')
       .bind(yesterday)

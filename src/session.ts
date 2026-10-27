@@ -216,14 +216,16 @@ export class PlayerSession extends DurableObject<Env> {
       this.assertNoActiveRun(Date.now());
       // A concurrent start would spend admission slots and then lose to this one.
       if (this.starting)
-        throw new ApiError('run_active', 'a ranked run is already starting or active');
+        throw new ApiError('run_active', 'another ranked start is in progress; retry shortly');
+      // Bad config fails before any limiter or quota is spent.
+      const limits = admissionLimits(this.env);
       this.starting = true;
       try {
         const { success } = await this.env.API_LIMITER.limit({
           key: `runs:${build.game}:${player}`,
         });
         if (!success) throw new ApiError('rate_limited', 'too many runs; retry later');
-        await admit(this.env, build.game, build.ruleset.ruleset, address);
+        await admit(this.env, limits, build.game, build.ruleset.ruleset, address);
       } finally {
         this.starting = false;
       }
@@ -1033,11 +1035,14 @@ function timingSafeEqual(a: string, b: string): boolean {
  * the global counter moves only while the address is within it, so one address
  * cannot spend everyone's runs. The address is stored as a keyed hash.
  */
-async function admit(env: Env, game: string, ruleset: string, address: string): Promise<void> {
+async function admit(
+  env: Env,
+  { perDay, share }: AdmissionLimits,
+  game: string,
+  ruleset: string,
+  address: string,
+): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  // MAX_RUNS_PER_DAY = 0 pauses ranked play.
-  const perDay = limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY', 0);
-  const share = limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS', 1);
   const key = await addressHash(env, `${day}:${address}`);
   const open = `NOT EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4)
     AND coalesce((SELECT runs_started FROM usage WHERE day = ?1), 0) < ?2`;
@@ -1074,11 +1079,23 @@ async function admit(env: Env, game: string, ruleset: string, address: string): 
   throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
 }
 
-/** A run limit from wrangler.jsonc. A bad value is a deploy error, so it fails loudly like verifyBudget. */
+type AdmissionLimits = { perDay: number; share: number };
+
+function admissionLimits(env: Env): AdmissionLimits {
+  if ((env.ADDRESS_KEY ?? '').length < 32)
+    throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
+  return {
+    // MAX_RUNS_PER_DAY = 0 pauses ranked play.
+    perDay: limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY', 0),
+    share: limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS', 1),
+  };
+}
+
+/** An integer setting from wrangler.jsonc. A bad value is a deploy error, so it fails loudly like verifyBudget. */
 export function limitVar(value: string | undefined, name: string, min: number): number {
   const n = Number(value);
   if (!/^\d{1,9}$/.test(value ?? '') || n < min) {
-    throw new Error(`${name} must be an integer >= ${min}`);
+    throw new Error(`${name} must be an integer from ${min} to 999999999`);
   }
   return n;
 }
@@ -1087,8 +1104,7 @@ let hmacKey: { secret: string; key: Promise<CryptoKey> } | undefined;
 
 /** HMAC-SHA256 under ADDRESS_KEY: a plain hash of an IPv4 address is reversible by brute force. */
 async function addressHash(env: Env, text: string): Promise<string> {
-  const secret = env.ADDRESS_KEY ?? '';
-  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
+  const secret = env.ADDRESS_KEY;
   if (hmacKey?.secret !== secret) {
     hmacKey = {
       secret,
@@ -1100,21 +1116,13 @@ async function addressHash(env: Env, text: string): Promise<string> {
         ['sign'],
       ),
     };
-    // Never keep a failed import: it would fail every later start in this isolate.
-    hmacKey.key.catch(() => {
-      hmacKey = undefined;
-    });
   }
   const mac = await crypto.subtle.sign('HMAC', await hmacKey.key, new TextEncoder().encode(text));
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function verifyBudget(env: Env): number {
-  const budget = Number(env.VERIFY_INSTRUCTIONS);
-  if (!Number.isInteger(budget) || budget < 10_000) {
-    throw new Error('VERIFY_INSTRUCTIONS must be an integer >= 10000');
-  }
-  return budget;
+  return limitVar(env.VERIFY_INSTRUCTIONS, 'VERIFY_INSTRUCTIONS', 10_000);
 }
 
 /** Errors raised by the Wasm verifier itself, as opposed to storage or bugs here. */
