@@ -22,7 +22,7 @@ Every failure has the same envelope and a stable `code`:
 | `run_active` | 409 | The player already has an active run, or another start is in progress. | Finish or abandon the active run; when `details.reason` is `start_in_progress`, another start is in flight: retry shortly. |
 | `run_not_active` | 409 | The run is paused, expired, rejected or finished. `details.reason` says why. | No. The run is local only. |
 | `sequence_conflict` | 409 | Wrong `seq`/`from_tick`, or a different body for an accepted `seq`. | Resend the chunk the server expects. |
-| `timing_rejected` | 422 | Input ahead of real time or older than the 1.5 s window. The run is rejected. | No. |
+| `timing_rejected` | 422 | Input ahead of real time or older than the 10 s window. The run is rejected. | No. |
 | `run_rejected` | 422 | The server refused the run. | No. |
 | `rate_limited` | 429 | Too many requests. | After `Retry-After`. |
 | `address_limit` | 429 | This network address used its daily share of ranked runs. | After `Retry-After` (next UTC midnight); play locally meanwhile. |
@@ -39,7 +39,7 @@ Network failures and 5xx on `inputs` are retried with the identical body: the se
 | Other JSON bodies | 2 KiB |
 | Ticks per input chunk | 120 (60 expected) |
 | Tick rate | 60 Hz |
-| Timing window | 90 ticks (1.5 s) behind real time; 6 ticks + 0.1% (at most 60 ticks) ahead |
+| Timing window | 600 ticks (10 s) behind real time; 6 ticks + 0.1% (at most 60 ticks) ahead |
 | Single pause | 15 min |
 | Total paused time | 60 min |
 | Session expiry | 24 h after start |
@@ -86,7 +86,7 @@ Body `{ "build_id", "mode", "arcade": true }`. `arcade` is optional for legacy c
 ```json
 {
   "run_id": "…", "seed": 123456789, "ruleset": "96cf239671ce4856", "board": "classic",
-  "tick_rate": 60, "chunk_max_ticks": 120, "window_ticks": 90,
+  "tick_rate": 60, "chunk_max_ticks": 120, "window_ticks": 600,
   "server_time": 1760356800000, "expires_at": 1760443200000
 }
 ```
@@ -125,7 +125,7 @@ Boards rank individual named runs, so one installation can have several entries 
 
 ### `POST …/runs/:run/pause`
 
-Body `{ "tick" }`, the last tick sent. Freeze the game, flush all input, then send this within 2 s of the last chunk (or of the last resume, if nothing was sent since; before the first chunk, within 7 s of the run start). The pause takes effect at that moment, so the flush and pause round trips count as paused time.
+Body `{ "tick" }`, the last tick sent. Freeze the game, flush all input, then send this within 10 s of the last chunk (or of the last resume, if nothing was sent since; before the first chunk, within 15 s of the run start). The pause takes effect at that moment, so the flush and pause round trips count as paused time.
 
 ### `POST …/runs/:run/resume`
 

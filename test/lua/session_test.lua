@@ -312,6 +312,26 @@ test("abandoning before the start reply abandons the late run and stays local", 
 	eq(f.requests[#f.requests].url, "https://x/v1/games/toy/runs/r1/abandon")
 end)
 
+test("leaving game over drains and polls the completed run in the background", function()
+	local f, s = started(90)
+	play(f, s, 2)
+	eq(s.status, "finishing")
+	s:abandon()
+	eq(s.status, "finishing", "leaving the screen must not cancel the final input")
+	s.sim.score = 0
+	f.answer(200, { status = "active" })
+	eq(f.requests[1].body.checksum, codec.checksum(codec.encode({ seed = 9, tick = 90, score = 90 })))
+	f.answer(200, { status = "finished" })
+	f.answer(200, { status = "verifying", retry_after_ms = 1000 })
+	f.time = f.time + 1
+	s.client:update_entries(f.time)
+	eq(f.requests[1].url, "https://x/v1/games/toy/runs/r1/finish")
+	f.answer(200, { status = "finished", published = true, score = 90 })
+	s.client:update_entries(f.time)
+	eq(s.status, "verified")
+	eq(s.client.finishing, nil)
+end)
+
 test("local progress mirrors best-run and total semantics", function()
 	local specs = {
 		{ id = "best", fact = "score", mode = "run", gte = 100 },

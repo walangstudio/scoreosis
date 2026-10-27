@@ -27,6 +27,7 @@ A leaderboard that accepts a score from the client is a leaderboard of whoever e
 - **Guest identity** per game installation. No accounts, no personal data.
 - **Server-approved pauses** that cannot be used to slow the game down.
 - **Free plan first.** Admission control stops new ranked runs before the daily quota runs out; games fall back to local play.
+- **Upload recovery.** Ten seconds of bounded network delay; finished runs keep uploading after leaving Game Over. Retry waits for the previous upload.
 - **Lua client library** for the game side: HTTP client, ranked session, local progress, Defold bindings.
 
 Games: Ah!Steroids, Sneak, ebakuw8.

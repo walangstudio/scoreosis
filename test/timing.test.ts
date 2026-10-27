@@ -14,18 +14,32 @@ const resume = (p: Player) =>
   api(`/v1/games/ahsteroids/runs/${p.run.run_id}/resume`, { token: p.token, body: {} });
 
 describe('timing', () => {
+  it('recovers a five-second network stall without accepting future input', async () => {
+    const clock = useClock();
+    const player = await Player.create();
+    await player.start();
+    clock.advance(1000);
+    expect((await player.send(player.play())).status).toBe(200);
+    clock.advance(5000);
+    expect((await player.send(player.play(120))).status).toBe(200);
+    expect((await player.send(player.play(120))).status).toBe(200);
+    expect((await player.send(player.play(60))).status).toBe(200);
+    const future = await player.send(player.play(120));
+    expect(future.status).toBe(422);
+    expect(future.body.error.message).toBe('input is ahead of real time');
+  });
+
   it('rejects a client running slower than real time', async () => {
     const clock = useClock();
     const player = await Player.create();
     await player.start();
     const statuses = [];
-    for (let s = 0; s < 5; s++) {
+    for (let s = 0; s < 22; s++) {
       clock.advance(1000);
       statuses.push((await player.send(player.play(30))).status);
     }
-    // The first chunk anchors real time; half speed then falls 30 ticks further
-    // behind each second, and the 1.5 s window holds 90.
-    expect(statuses).toEqual([200, 200, 200, 200, 422]);
+    expect(statuses.slice(0, 21)).toEqual(Array(21).fill(200));
+    expect(statuses[21]).toBe(422);
   });
 
   it('does not count start-up latency as lag', async () => {
@@ -103,19 +117,19 @@ describe('timing', () => {
     const clock = useClock();
     const player = await Player.create();
     await player.start();
-    clock.advance(10_000);
+    clock.advance(20_000);
     const res = await player.send(player.play());
     expect(res.status).toBe(409);
     expect(res.body.error.details).toEqual({ reason: 'connection_lost' });
   });
 
-  it('tolerates network delay within the 1.5 second window', async () => {
+  it('tolerates network delay within the ten-second window', async () => {
     const clock = useClock();
     const player = await Player.create();
     await player.start();
     clock.advance(1000);
     expect((await player.send(player.play())).status).toBe(200);
-    clock.advance(2400);
+    clock.advance(10_900);
     expect((await player.send(player.play())).status).toBe(200);
   });
 
@@ -125,7 +139,7 @@ describe('timing', () => {
     await player.start();
     clock.advance(1000);
     await player.send(player.play());
-    clock.advance(5000);
+    clock.advance(15_000);
     const res = await player.send(player.play(120));
     expect(res.status).toBe(409);
     expect(res.body.error).toMatchObject({
@@ -249,7 +263,7 @@ describe('timing', () => {
     await player.start();
     clock.advance(1000);
     await player.send(player.play());
-    clock.advance(2500);
+    clock.advance(10_500);
     const res = await pause(player);
     expect(res.status).toBe(422);
   });

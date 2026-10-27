@@ -267,6 +267,10 @@ end
 -- Gives up the ranked run (menu exit, quit).
 function M:abandon()
 	local s = self.status
+	if s == "finishing" then
+		self.client.finishing = self
+		return
+	end
 	if self.run and (s == "ranked" or s == "pausing" or s == "paused" or s == "resuming") then
 		self.client:call("POST", run_path(self, "abandon"), {}, function() end, true)
 	end

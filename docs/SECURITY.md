@@ -10,7 +10,7 @@ Goal: competitive results come only from legal, real-time gameplay of a register
 | Modified client simulation, altered seed or rules | State checksum per chunk must match the verifier. | `integrity.test.ts` |
 | Illegal actions | Input bits bounded by the ruleset's button count; rules enforced by the simulation. | `integrity.test.ts` |
 | Speed hacks | Input may lead real time by at most 6 ticks + 0.1%, capped at 60 ticks. | `integrity.test.ts` |
-| Slow motion, late upload, rewritten history | Input must arrive within 1.5 s; sequence and tick continuity; an accepted `seq` is immutable. | `timing.test.ts`, `integrity.test.ts` |
+| Slow motion, late upload, rewritten history | Input must arrive within 10 s; sequence and tick continuity; an accepted `seq` is immutable. | `timing.test.ts`, `integrity.test.ts` |
 | Pause abuse | Server-approved pauses only, at the flushed tick; 15 min each, 60 min total, 24 h session. Resume removes only the paused time, so pause cycles cannot launder slow motion or bank lead. | `timing.test.ts` |
 | Duplicate rewards | Event id per run; one storage transaction for rewards and outbox; personal bests only increase. | `recovery.test.ts`, `achievements.test.ts` |
 | Another player's run | Each run lives in its owner's object; the token secret is checked there. | `integrity.test.ts` |
