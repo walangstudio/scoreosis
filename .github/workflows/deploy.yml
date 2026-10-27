@@ -68,10 +68,13 @@ jobs:
       - name: Deploy the Worker
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          ADDRESS_KEY: ${{ secrets.ADDRESS_KEY }}
         run: |
-          secrets=()
-          if [ -n "$ADMIN_TOKEN" ]; then
-            jq -n --arg t "$ADMIN_TOKEN" '{ADMIN_TOKEN: $t}' > "$RUNNER_TEMP/secrets.json"
-            secrets=(--secrets-file "$RUNNER_TEMP/secrets.json")
+          # Ranked run starts fail closed without ADDRESS_KEY; refuse to deploy rather than ship that.
+          if [ "${#ADDRESS_KEY}" -lt 32 ]; then
+            echo "::error::Set the ADDRESS_KEY secret on the $TARGET environment (openssl rand -hex 32)"
+            exit 1
           fi
-          pnpm exec wrangler deploy --env "$TARGET" "${secrets[@]}"
+          jq -n --arg a "$ADMIN_TOKEN" --arg k "$ADDRESS_KEY" \
+            '{ADDRESS_KEY: $k} + (if $a == "" then {} else {ADMIN_TOKEN: $a} end)' > "$RUNNER_TEMP/secrets.json"
+          pnpm exec wrangler deploy --env "$TARGET" --secrets-file "$RUNNER_TEMP/secrets.json"

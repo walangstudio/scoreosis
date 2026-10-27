@@ -27,13 +27,13 @@ Goal: competitive results come only from legal, real-time gameplay of a register
 
 ## Known limits
 
-- Bots and assistance that produce legal inputs in real time pass verification.
+- Bots and assistance that produce legal inputs in real time pass verification. The run seed is returned at start, so a bot can simulate ahead. Moderation (hide, suppress) is the answer; never claim human or cheat-proof verification.
 - Players can think during pauses.
 - Build ids and platform labels are claims. Platform boards are labels, not attestation.
 - Country is Cloudflare's view of the request at run start; a VPN changes it.
 - Guest creation cannot stop one person making many guests; throttles slow it.
 - Cloudflare's rate-limit binding is per location and eventually consistent. Exact invariants (one active run, sequences) live in the player's object.
-- A free plan can be exhausted by abuse. Capacity errors stop new ranked runs; local play continues.
+- A free plan can be exhausted by abuse. One network address may start at most `MAX_RUNS_PER_ADDRESS` ranked runs a day, however many guests it creates, so exhausting the daily allowance takes many addresses. An attacker with many IPv4 addresses or IPv6 /64s can still do it. The counter stores an HMAC of the address under `ADDRESS_KEY`, kept one day; anyone holding both the key and the table can still recover IPv4 addresses by brute force. Capacity errors stop new ranked runs; local play continues.
 - itch.io serves every HTML5 game from the shared `html-classic.itch.zone` origin, so other games there can read browser storage, including the guest token. Treat web guest tokens as low-value; anything more needs per-game hosting.
 
 ## Logging

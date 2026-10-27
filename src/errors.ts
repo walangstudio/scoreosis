@@ -15,6 +15,7 @@ export type ErrorCode =
   | 'timing_rejected'
   | 'run_rejected'
   | 'rate_limited'
+  | 'address_limit'
   | 'capacity'
   | 'internal';
 
@@ -34,6 +35,7 @@ export const STATUS: Record<ErrorCode, number> = {
   timing_rejected: 422,
   run_rejected: 422,
   rate_limited: 429,
+  address_limit: 429,
   capacity: 503,
   internal: 500,
 };

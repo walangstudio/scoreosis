@@ -27,7 +27,7 @@ Run a staging soak with a real client and read Workers Observability:
 - `run_rejected` reasons, `desync`, `verifier_error`, `publish_retry`, `capacity_reached` events.
 - D1 rows read per `me=1` leaderboard request. Those reads skip the cache and scan every named positive result in the filter, so their cost grows with stored results.
 
-Set `MAX_RUNS_PER_DAY` from the measured rows written per run, leaving room for other projects on the account.
+Set `MAX_RUNS_PER_DAY` from the measured rows written per run, leaving room for other projects on the account. `MAX_RUNS_PER_ADDRESS` caps one network address's share; `address_limit_reached` events show addresses hitting it.
 
 ## Schema changes
 

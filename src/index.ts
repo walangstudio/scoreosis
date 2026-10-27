@@ -58,6 +58,8 @@ export default {
   },
 
   async scheduled(_controller, env): Promise<void> {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await env.DB.prepare('DELETE FROM admissions WHERE day < ?').bind(yesterday).run();
     let removed = 0;
     for (let batch = 0; batch < 20; batch++) {
       const n = await pruneResults(env.DB, Date.now() - RESULT_RETENTION_MS);
@@ -263,7 +265,14 @@ route('POST', /^\/v1\/games\/([a-z0-9_]+)\/runs$/, async ({ request, env }, [gam
   if (body.arcade !== undefined && typeof body.arcade !== 'boolean')
     throw new ApiError('bad_request', 'arcade must be a boolean');
   return reply(
-    await auth.session.startRun(auth.secretHash, build.id, country, mode, body.arcade === true),
+    await auth.session.startRun(
+      auth.secretHash,
+      build.id,
+      country,
+      mode,
+      addressKey(request),
+      body.arcade === true,
+    ),
     (r) => r.run,
     201,
   );
@@ -459,8 +468,16 @@ async function requireAdmin(request: Request, env: Env): Promise<void> {
 function addressKey(request: Request): string {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   if (!ip.includes(':')) return ip;
-  const groups = ip.split('::')[0]?.split(':') ?? [];
-  return `${groups.slice(0, 4).join(':')}::/64`;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped?.[1]) return mapped[1];
+  const [head = '', tail] = ip.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = tail === undefined ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
+  return `${groups
+    .slice(0, 4)
+    .map((g) => Number.parseInt(g, 16).toString(16))
+    .join(':')}::/64`;
 }
 
 async function limit(limiter: RateLimit, key: string): Promise<void> {
@@ -486,6 +503,9 @@ function errorResponse(f: Failure): Response {
   if (f.details !== undefined) error.details = f.details;
   const headers: Record<string, string> = { 'cache-control': 'no-store' };
   if (f.code === 'rate_limited' || f.code === 'capacity') headers['retry-after'] = '60';
+  // The address share renews at UTC midnight.
+  if (f.code === 'address_limit')
+    headers['retry-after'] = String(Math.ceil((86_400_000 - (Date.now() % 86_400_000)) / 1000));
   return json({ error }, STATUS[f.code], headers);
 }
 

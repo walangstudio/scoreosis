@@ -25,6 +25,7 @@ Every failure has the same envelope and a stable `code`:
 | `timing_rejected` | 422 | Input ahead of real time or older than the 1.5 s window. The run is rejected. | No. |
 | `run_rejected` | 422 | The server refused the run. | No. |
 | `rate_limited` | 429 | Too many requests. | After `Retry-After`. |
+| `address_limit` | 429 | This network address used its daily share of ranked runs. | After `Retry-After` (next UTC midnight); play locally meanwhile. |
 | `capacity` | 503 | Daily ranked capacity reached. | After `Retry-After`; play locally meanwhile. |
 | `internal` | 500 | Server fault. | Same request, with backoff. |
 

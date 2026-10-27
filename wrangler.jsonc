@@ -10,6 +10,7 @@
     // Lua instructions the verifier may spend per request (~116k per ms measured locally).
     "VERIFY_INSTRUCTIONS": "1000000",
     "MAX_RUNS_PER_DAY": "750",
+    "MAX_RUNS_PER_ADDRESS": "75",
     "ALLOWED_ORIGINS": ""
   },
   "durable_objects": {
@@ -35,6 +36,7 @@
       "vars": {
         "VERIFY_INSTRUCTIONS": "1000000",
         "MAX_RUNS_PER_DAY": "500",
+        "MAX_RUNS_PER_ADDRESS": "50",
         "ALLOWED_ORIGINS": "http://127.0.0.1:8774,http://127.0.0.1:8775,http://localhost:8774,http://localhost:8775,http://127.0.0.1:8097,http://localhost:8097,https://html-classic.itch.zone"
       },
       "durable_objects": { "bindings": [{ "name": "PLAYERS", "class_name": "PlayerSession" }] },
@@ -56,6 +58,7 @@
       "vars": {
         "VERIFY_INSTRUCTIONS": "1000000",
         "MAX_RUNS_PER_DAY": "750",
+        "MAX_RUNS_PER_ADDRESS": "75",
         "ALLOWED_ORIGINS": "https://html-classic.itch.zone"
       },
       "durable_objects": { "bindings": [{ "name": "PLAYERS", "class_name": "PlayerSession" }] },
