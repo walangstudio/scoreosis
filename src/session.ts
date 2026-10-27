@@ -216,7 +216,7 @@ export class PlayerSession extends DurableObject<Env> {
       this.assertNoActiveRun(Date.now());
       // A concurrent start would spend admission slots and then lose to this one.
       if (this.starting)
-        throw new ApiError('run_active', 'finish or abandon the active ranked run first');
+        throw new ApiError('run_active', 'a ranked run is already starting or active');
       this.starting = true;
       try {
         const { success } = await this.env.API_LIMITER.limit({
@@ -1035,8 +1035,9 @@ function timingSafeEqual(a: string, b: string): boolean {
  */
 async function admit(env: Env, game: string, ruleset: string, address: string): Promise<void> {
   const day = new Date().toISOString().slice(0, 10);
-  const perDay = limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY');
-  const share = limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS');
+  // MAX_RUNS_PER_DAY = 0 pauses ranked play.
+  const perDay = limitVar(env.MAX_RUNS_PER_DAY, 'MAX_RUNS_PER_DAY', 0);
+  const share = limitVar(env.MAX_RUNS_PER_ADDRESS, 'MAX_RUNS_PER_ADDRESS', 1);
   const key = await addressHash(env, `${day}:${address}`);
   const open = `NOT EXISTS (SELECT 1 FROM disabled_rulesets WHERE game_id = ?3 AND ruleset = ?4)
     AND coalesce((SELECT runs_started FROM usage WHERE day = ?1), 0) < ?2`;
@@ -1073,16 +1074,12 @@ async function admit(env: Env, game: string, ruleset: string, address: string): 
   throw new ApiError('capacity', 'ranked play is at capacity today; local play is unaffected');
 }
 
-// Misconfiguration stops ranked starts with a non-retryable error, never a 500 clients retry.
-function misconfigured(problem: string): never {
-  log('admission_misconfigured', { problem });
-  throw new ApiError('capacity', 'ranked play is unavailable; local play is unaffected');
-}
-
-/** A run limit; 0 pauses ranked play. */
-function limitVar(value: string | undefined, name: string): number {
+/** A run limit from wrangler.jsonc. A bad value is a deploy error, so it fails loudly like verifyBudget. */
+export function limitVar(value: string | undefined, name: string, min: number): number {
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 0) misconfigured(`${name} must be a non-negative integer`);
+  if (!/^\d{1,9}$/.test(value ?? '') || n < min) {
+    throw new Error(`${name} must be an integer >= ${min}`);
+  }
   return n;
 }
 
@@ -1091,7 +1088,7 @@ let hmacKey: { secret: string; key: Promise<CryptoKey> } | undefined;
 /** HMAC-SHA256 under ADDRESS_KEY: a plain hash of an IPv4 address is reversible by brute force. */
 async function addressHash(env: Env, text: string): Promise<string> {
   const secret = env.ADDRESS_KEY ?? '';
-  if (secret.length < 32) misconfigured('ADDRESS_KEY must be at least 32 characters');
+  if (secret.length < 32) throw new Error('ADDRESS_KEY must be a secret of at least 32 characters');
   if (hmacKey?.secret !== secret) {
     hmacKey = {
       secret,
@@ -1103,6 +1100,10 @@ async function addressHash(env: Env, text: string): Promise<string> {
         ['sign'],
       ),
     };
+    // Never keep a failed import: it would fail every later start in this isolate.
+    hmacKey.key.catch(() => {
+      hmacKey = undefined;
+    });
   }
   const mac = await crypto.subtle.sign('HMAC', await hmacKey.key, new TextEncoder().encode(text));
   return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');

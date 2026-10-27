@@ -1,6 +1,7 @@
 import { createScheduledController, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import worker from '../src/index.js';
+import { limitVar } from '../src/session.js';
 import { BUILD, api, guest } from './client.js';
 import { RULESET } from './fixtures.js';
 
@@ -153,6 +154,15 @@ describe('per-address admission', () => {
       .bind(old, kept)
       .all<{ day: string }>();
     expect(days.results.map((r) => r.day)).toEqual([yesterday]);
+  });
+
+  it('reads run limits strictly: 0 pauses the day, the share needs at least 1', () => {
+    expect(limitVar('0', 'MAX_RUNS_PER_DAY', 0)).toBe(0);
+    expect(limitVar('75', 'MAX_RUNS_PER_ADDRESS', 1)).toBe(75);
+    for (const bad of [undefined, '', ' ', '-1', '1.5', 'abc']) {
+      expect(() => limitVar(bad, 'MAX_RUNS_PER_DAY', 0), String(bad)).toThrow('MAX_RUNS_PER_DAY');
+    }
+    expect(() => limitVar('0', 'MAX_RUNS_PER_ADDRESS', 1)).toThrow('MAX_RUNS_PER_ADDRESS');
   });
 });
 

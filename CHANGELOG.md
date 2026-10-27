@@ -10,7 +10,7 @@ All notable changes to Scoreosis are documented here. The format follows [Keep a
 - IPv6 rate-limit keys parse every spelling of an address; IPv4-mapped IPv6 counts as its IPv4 address.
 - Deploys require the `ADDRESS_KEY` secret on each GitHub environment.
 - A player starting two runs at once spends one admission slot, not two.
-- Missing or malformed run limits stop ranked starts with `capacity` and log `admission_misconfigured` instead of a retryable 500. `MAX_RUNS_PER_DAY = 0` pauses ranked play.
+- `MAX_RUNS_PER_DAY = 0` pauses ranked play (`capacity`). A missing or malformed run limit or `ADDRESS_KEY` fails ranked starts with 500, like a bad `VERIFY_INSTRUCTIONS`.
 - Security docs name the remaining limits: legal-input bots with the start seed, client-claimed platform labels, shared itch browser storage.
 
 ## [0.3.0] - 2026-10-27

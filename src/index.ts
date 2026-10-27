@@ -58,6 +58,12 @@ export default {
   },
 
   async scheduled(_controller, env): Promise<void> {
+    // Each cleanup logs its own failure so neither can stop the other.
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await env.DB.prepare('DELETE FROM admissions WHERE day < ?')
+      .bind(yesterday)
+      .run()
+      .catch((error) => log('admissions_prune_failed', { error: String(error) }));
     let removed = 0;
     for (let batch = 0; batch < 20; batch++) {
       const n = await pruneResults(env.DB, Date.now() - RESULT_RETENTION_MS);
@@ -65,12 +71,6 @@ export default {
       if (n < 500) break;
     }
     log('results_pruned', { removed });
-    // Logged, not thrown: a failure here must not fail the daily job.
-    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    await env.DB.prepare('DELETE FROM admissions WHERE day < ?')
-      .bind(yesterday)
-      .run()
-      .catch((error) => log('admissions_prune_failed', { error: String(error) }));
   },
 } satisfies ExportedHandler<Env>;
 
